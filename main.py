@@ -5,8 +5,11 @@ import pandas as pd
 from tqdm import tqdm
 from typing import Dict, Any, Optional, Tuple
 import logging
+import json
+import logging.config
 
 # --- Direct Imports ---
+from utils.log_main import logger as debate_logger  # Import our custom logger
 from utils.set_api_keys import set_environment_variables_from_file, API_KEYS_PATH
 from config.loader import load_app_config
 from core.orchestrator import DebateOrchestrator
@@ -16,8 +19,8 @@ from core.debate_setup import DebateInstanceSetup
 from colorama import init, Fore, Style
 init(autoreset=True)
 
-# Define logger at module level
-logger = logging.getLogger(__name__)
+# Use our custom debate logger instead of creating a new one
+logger = debate_logger
 
 # --- Argument Parsing --- 
 def define_arguments() -> argparse.Namespace:
@@ -36,18 +39,40 @@ def define_arguments() -> argparse.Namespace:
 # --- Main Execution Logic --- 
 def main():
     # --- Central Logging Configuration ---
-    logging.basicConfig(
-        level=logging.INFO, # Change from INFO to DEBUG if debug is needed
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    # Load configuration from JSON file
+    log_config_path = "config/log.json"
+    if os.path.exists(log_config_path):
+        try:
+            with open(log_config_path, 'r') as f:
+                config = json.load(f)
+                
+            # Create log directories if they don't exist
+            for handler in config.get('handlers', {}).values():
+                if 'filename' in handler:
+                    log_dir = os.path.dirname(handler['filename'])
+                    if log_dir and not os.path.exists(log_dir):
+                        os.makedirs(log_dir)
+            
+            # Apply configuration
+            logging.config.dictConfig(config)
+            logger.info(f"Logging configuration loaded from {log_config_path}")
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON in logging config file {log_config_path}: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"ERROR: Failed to configure logging from {log_config_path}: {e}")
+            sys.exit(1)
+    else:
+        print(f"ERROR: Logging config file not found at {log_config_path}")
+        sys.exit(1)
+    
     # --- Suppress noisy logs from underlying libraries ---
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("google.api_core").setLevel(logging.WARNING)
     # --------------------------------
-    logger.info("Application starting...")
+    logger.info("Application starting...", extra={"msg_type": "system"})
     # -----------------------------------
 
     args = define_arguments()
@@ -60,16 +85,16 @@ def main():
         config = load_app_config(args.settings_path, args.models_path)
         debate_settings = config['settings']['debate_settings']
         run_config_name = args.config_run_name or "Default_NoHelper"
-        logger.info(f"Using agent run configuration: {run_config_name}")
+        logger.info(f"Using agent run configuration: {run_config_name}", extra={"msg_type": "system"})
         agent_configs_for_run = config['settings']['agent_configurations'].get(run_config_name)
         if not agent_configs_for_run:
-            logger.error(f"Run configuration '{run_config_name}' not found in settings.")
+            logger.error(f"Run configuration '{run_config_name}' not found in settings.", extra={"msg_type": "system"})
             sys.exit(1)
         helper_type_name = agent_configs_for_run.get('helper_type_name', run_config_name)
 
         # Load dataset
         data_path = debate_settings['data_path']
-        logger.info(f"Loading data from: {data_path}")
+        logger.info(f"Loading data from: {data_path}", extra={"msg_type": "system"})
         
         # Check if the configured path exists directly
         if not os.path.exists(data_path):
@@ -87,7 +112,7 @@ def main():
         
         # Proceed with loading now data_path is confirmed
         data = pd.read_csv(data_path)
-        logger.info(f"Loaded {len(data)} claims.")
+        logger.debug(f"Loaded {len(data)} claims.")
 
         # Determine claims to run
         claim_indices_to_run = []
@@ -99,7 +124,7 @@ def main():
                 sys.exit(1)
         else:
             claim_indices_to_run = list(range(len(data)))
-            logger.info(f"Running for all {len(claim_indices_to_run)} claims.")
+            logger.debug(f"Running for all {len(claim_indices_to_run)} claims.")
 
         # Load Initial Prompt Template
         initial_prompt_path = debate_settings.get('initial_prompt_path')
@@ -107,7 +132,7 @@ def main():
         try:
             with open(initial_prompt_path, 'r', encoding='utf-8') as f:
                 initial_prompt_template_content = f.read()
-            logger.info(f"Loaded initial prompt template from: {initial_prompt_path}")
+            logger.debug(f"Loaded initial prompt template from: {initial_prompt_path}")
         except FileNotFoundError:
              logger.critical(f"Initial prompt template file not found: {initial_prompt_path}. Exiting."); sys.exit(1)
         except Exception as e:
@@ -121,9 +146,13 @@ def main():
         for index, claim_data in tqdm(data.iloc[claim_indices_to_run].iterrows(), total=len(claim_indices_to_run), desc="Running Debates"):
             topic_id = str(claim_data.get(topic_id_col, index))
             claim_text = str(claim_data.get(claim_col, ''))
-            if not claim_text: logger.warning(f"Skipping {topic_id} (Index {index}): empty claim."); continue
+            if not claim_text: 
+                logger.warning(f"Skipping {topic_id} (Index {index}): empty claim.", 
+                              extra={"msg_type": "system"})
+                continue
 
-            logger.info(f"\n===== Preparing Claim Index: {index}, Topic ID: {topic_id} ====")
+            logger.info(f"\n===== Preparing Claim Index: {index}, Topic ID: {topic_id} ====", 
+                       extra={"msg_type": "system"})
             run_result = {}
             try:
                 # Instantiate setup class for this claim
@@ -134,6 +163,7 @@ def main():
                     claim_data=claim_data
                     # Removed resolved_llm_providers/summarizer args
                 )
+                logger.debug(f"Debater setup complete")
 
                 # Instantiate orchestrator 
                 orchestrator = DebateOrchestrator(
@@ -141,9 +171,9 @@ def main():
                     debater=setup.debater,
                     moderator_terminator=setup.moderator_terminator,
                     moderator_topic_checker=setup.moderator_topic_checker,
-                    max_rounds=int(debate_settings.get('max_rounds', 12)),
-                    logger_instance=logger
+                    max_rounds=int(debate_settings.get('max_rounds', 12))
                 )
+                logger.debug(f"Orchestrator setup complete")
                 
                 # Run debate
                 run_result = orchestrator.run_debate(
@@ -151,11 +181,13 @@ def main():
                     log_config=debate_settings, 
                     helper_type_name=helper_type_name
                 )
+                logger.debug(f"Debate run complete")
                 run_result['status'] = 'Success'
 
             except Exception as e:
                 # Handle setup or runtime errors 
-                logger.error(f"!!!!! Error running debate for Topic ID {topic_id} (Index {index}): {e} !!!!!", exc_info=True)
+                logger.error(f"!!!!! Error running debate for Topic ID {topic_id} (Index {index}): {e} !!!!!", 
+                           extra={"msg_type": "system"})
                 run_result = {
                     "topic_id": topic_id,
                     "claim_index": index,
@@ -165,20 +197,26 @@ def main():
             results_summary.append(run_result)
 
         # --- Print Summary --- 
-        logger.info("\n===== Debate Run Summary ====")
+        logger.info("\n===== Debate Run Summary ====", extra={"msg_type": "system"})
         successful_runs = [r for r in results_summary if r.get('status') == 'Success']
         failed_runs = [r for r in results_summary if r.get('status') == 'ERROR']
-        logger.info(f"Total Debates Run: {len(results_summary)}")
-        logger.info(f"Successful: {len(successful_runs)}")
-        logger.info(f"Failed: {len(failed_runs)}")
+        logger.info(f"Total Debates Run: {len(results_summary)}", 
+                   extra={"msg_type": "system", "total_runs": len(results_summary)})
+        logger.info(f"Successful: {len(successful_runs)}", 
+                   extra={"msg_type": "system", "successful_runs": len(successful_runs)})
+        logger.info(f"Failed: {len(failed_runs)}", 
+                   extra={"msg_type": "system","failed_runs": len(failed_runs)})
         if failed_runs:
-             logger.warning("\nFailed Runs:")
+             logger.warning("\nFailed Runs:", extra={"msg_type": "system"})
              for fail in failed_runs:
-                  logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Error: {fail.get('error_message','Unknown')}")
+                  logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Error: {fail.get('error_message','Unknown')}", 
+                                extra={"msg_type": "system"})
 
     except Exception as e:
-        logger.critical(f"\nAn unexpected error occurred in main execution: {e}", exc_info=True)
+        logger.critical(f"\nAn unexpected error occurred in main execution: {e}", 
+                       extra={"msg_type": "system"})
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main() 

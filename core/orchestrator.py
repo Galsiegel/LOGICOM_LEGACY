@@ -14,8 +14,9 @@ from agents.moderator_agent import ModeratorAgent # For type hints
 from core.interfaces import MemoryInterface # For type hinting if needed
 from utils.log_debate import save_debate_log
 from core.interfaces import INTERNAL_USER_ROLE, INTERNAL_AI_ROLE # Import standard roles
+from utils.log_main import logger # Import custom logger
 
-logger = logging.getLogger(__name__)
+
 
 
 # TODO: add sides to moderator history, saying who's the debater and who's the persuader, add this in the orchestrator
@@ -38,8 +39,7 @@ class DebateOrchestrator:
                  moderator_terminator: ModeratorAgent,
                  moderator_topic_checker: ModeratorAgent,
                  # Settings
-                 max_rounds: int,
-                 logger_instance: logging.Logger | None = None):
+                 max_rounds: int):
         self.persuader = persuader
         self.debater = debater
         self.moderator_terminator = moderator_terminator
@@ -47,7 +47,6 @@ class DebateOrchestrator:
 
         self.max_rounds = max_rounds
 
-        self.logger = logger_instance or logging.getLogger(__name__)
         self.log_handlers = {} # Dict to store loggers for different formats
 
     
@@ -95,7 +94,7 @@ class DebateOrchestrator:
         if round_number >= self.max_rounds:
             final_result_status = "Persuader Fail (Max Rounds)"
             finish_reason = "Max rounds reached"
-            logger.info(f"Debate ended: Reached max rounds ({self.max_rounds}).")
+            logger.debug(f"Debate ended: Reached max rounds ({self.max_rounds})." , extra={"msg_type": "main debate"})
 
         # Return results
         return self._finalize_debate(
@@ -120,14 +119,14 @@ class DebateOrchestrator:
         # Generate unique ID
         chat_id = str(uuid.uuid4())
         
-        # Log initial setup
-        logger.info(f"\n--- Starting Debate --- Topic: {topic_id}, Chat ID: {chat_id} ---")
-        logger.info(f"Config: {helper_type_name}")
-        logger.info(f"Persuader: {self.persuader.agent_name}, LLM: {self.persuader.llm_client.__class__.__name__}")
-        logger.info(f"Debater: {self.debater.agent_name}, LLM: {self.debater.llm_client.__class__.__name__}")
-        logger.info(f"Moderator (Terminator): {self.moderator_terminator.agent_name}")
-        logger.info(f"Moderator (Topic): {self.moderator_topic.agent_name}")
-        logger.info(f"Max rounds limit set to: {self.max_rounds}")
+        # Log initial setup TODO:: check duplicates in log
+        logger.debug(f"\n--- Starting Debate --- Topic: {topic_id}, Chat ID: {chat_id} ---")
+        logger.debug(f"Config: {helper_type_name}")
+        logger.debug(f"Persuader: {self.persuader.agent_name}, LLM: {self.persuader.llm_client.__class__.__name__}")
+        logger.debug(f"Debater: {self.debater.agent_name}, LLM: {self.debater.llm_client.__class__.__name__}")
+        logger.debug(f"Moderator (Terminator): {self.moderator_terminator.agent_name}")
+        logger.debug(f"Moderator (Topic): {self.moderator_topic.agent_name}")
+        logger.debug(f"Max rounds limit set to: {self.max_rounds}")
 
         return chat_id
 
@@ -184,17 +183,17 @@ class DebateOrchestrator:
         })
         raw_text = termination_result.strip().upper()
         if '<TERMINATE>' in raw_text:
-            logger.info("Parser found TERMINATE signal.")
+            logger.debug("Parser found TERMINATE signal." , extra={"msg_type": "main debate", "sender": "moderator"})
             print(f"{self.MODERATOR_COLOR}Moderator Termination Check: TERMINATE.{self.RESET_ALL}")
             return False
         
         elif '<KEEP-TALKING>' in raw_text:
-            logger.info("Parser found KEEP-TALKING signal.")
+            logger.debug("Parser found KEEP-TALKING signal." , extra={"msg_type": "main debate", "sender": "moderator"})
             print(f"{self.MODERATOR_COLOR}Moderator Termination Check: Continue debate.{self.RESET_ALL}")
             return True
         
         else: #TODO: Decide if this should be a warning or an error
-            logger.warning(f"Termination moderator returned unexpected response '{termination_result}'. Defaulting to KEEP-TALKING.")
+            logger.warning(f"Termination moderator returned unexpected response '{termination_result}'. Defaulting to KEEP-TALKING." , extra={"msg_type": "main debate", "sender": "moderator"})
             return True
 
 
@@ -214,7 +213,7 @@ class DebateOrchestrator:
         elif '<OFF-TOPIC>' in raw_text:
             return False
         else: #TODO: Decide if this should be a warning or an error
-            logger.warning(f"Topic check response format unclear: {topic_result}. Defaulting to on-topic.")
+            logger.warning(f"Topic check response format unclear: {topic_result}. Defaulting to on-topic." , extra={"msg_type": "main debate", "sender": "moderator"})
             return True
     #TODO: make the memory incapsuled in agents
     def _append_moderation_results_to_memories(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface, moderator_logs: List[Dict[str, Any]]):
@@ -228,7 +227,7 @@ class DebateOrchestrator:
                         final_result_status: str, finish_reason: str, log_config: Dict[str, Any], 
                         helper_type_name: str) -> Dict[str, Any]:
         """Finalize the debate by saving logs and preparing results."""
-        logger.info(f"\n--- Debate Ended --- Round: {round_number}, Status: {final_result_status}, Reason: {finish_reason} ---")
+        logger.info(f"\n--- Debate Ended --- Round: {round_number}, Status: {final_result_status}, Reason: {finish_reason} ---", extra={"msg_type": "main debate", "sender": "orchestrator"})
 
         # Save debate logs
         log_base_path = log_config.get('log_base_path', './logs')

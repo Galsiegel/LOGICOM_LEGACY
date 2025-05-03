@@ -3,6 +3,9 @@ from typing import Dict, Any, Optional
 import pandas as pd
 import os 
 
+# Import our custom logger
+from utils.log_main import logger as debate_logger
+
 # --- Import necessary classes ---
 from core.interfaces import LLMInterface, MemoryInterface, AgentInterface
 from memory.chat_summary_memory import ChatSummaryMemory
@@ -11,7 +14,8 @@ from agents.debater_agent import DebaterAgent
 from agents.moderator_agent import ModeratorAgent
 from llm.llm_factory import LLMFactory
 
-logger = logging.getLogger(__name__)
+# Use our custom debate_logger instead of creating a new one
+logger = debate_logger
 
 # Helper functions
 def _extract_claim_data_for_prompt(claim_data: pd.Series, column_mapping: Dict[str, str]) -> Dict[str, str]:
@@ -49,7 +53,16 @@ class DebateInstanceSetup:
                  initial_prompt_template: str, 
                  claim_data: pd.Series):
         
-        logger.info(f"Setting up instance for Claim ID: {claim_data.get(debate_settings.get('topic_id_column', 'id'), 'N/A')}") # TODO: Don't use get, if this isn't there, an error should be raised
+        if claim_data is None: raise ValueError("claim_data is required.")
+        if debate_settings is None: raise ValueError("debate_settings is required.")
+        if initial_prompt_template is None: raise ValueError("initial_prompt_template is required.")
+        if agents_configuration is None: raise ValueError("agents_configuration is required.")
+
+        if debate_settings.get('topic_id_column') is None: raise ValueError("topic_id_column is required in debate_settings.") # TODO:: check if topic id == chat id
+        
+        else:
+            self.topic_id = claim_data.get(debate_settings.get('topic_id_column', 'id'))
+            logger.debug(f"Setting up instance for Topic ID: {self.topic_id}")
         self.agents_configuration = agents_configuration
         self.debate_settings = debate_settings
         self.initial_prompt_template = initial_prompt_template
@@ -73,7 +86,7 @@ class DebateInstanceSetup:
         # Step 5: Create Agents
         self._create_agents() 
 
-        logger.info("Debate instance setup complete.")
+        logger.debug("Debate instance setup complete.")
         
     # --- Private Helper Methods --- 
     def _load_and_populate_prompt(self, file_path: str, debate_context: Dict) -> str:
@@ -192,7 +205,7 @@ class DebateInstanceSetup:
             target_prompt_tokens=target,
             keep_messages_after_summary=keep
         )
-        logger.info("Created Persuader ChatSummaryMemory.")
+        logger.debug("Created Persuader ChatSummaryMemory.")
         
         self.debater_memory = ChatSummaryMemory(
             summarizer_llm=self.d_summarizer_client,
@@ -200,7 +213,7 @@ class DebateInstanceSetup:
             target_prompt_tokens=target,
             keep_messages_after_summary=keep
         )
-        logger.info("Created Debater ChatSummaryMemory.")
+        logger.debug("Created Debater ChatSummaryMemory.")
 
     def _create_agents(self):
         #TODO: further encapsulare this, it's a mess of mega long lines right now
@@ -218,4 +231,4 @@ class DebateInstanceSetup:
         self.debater = DebaterAgent(llm_client=self.d_llm_client, memory=self.debater_memory, variables=self.debate_details, model_config=d_model_cfg, prompt_wrapper_path=d_config.get('prompt_wrapper_path'))
         self.moderator_terminator = ModeratorAgent(llm_client=self.mod_term_client, agent_name="ModeratorTerminator", model_config=mod_model_cfg, variables=self.debate_details)
         self.moderator_topic_checker = ModeratorAgent(llm_client=self.mod_topic_client, agent_name="ModeratorTopicChecker", model_config=mod_model_cfg, variables=self.debate_details)
-        logger.info("Created all agents.") 
+        logger.debug("Created all agents.") 

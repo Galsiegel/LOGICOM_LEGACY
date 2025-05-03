@@ -12,6 +12,7 @@
                 "message": "message",
                 "timestamp": "timestamp",
                 "logger": "name",
+                "module": "module",
                 "function": "funcName",
                 "line": "lineno",
                 "thread_name": "threadName"
@@ -26,7 +27,14 @@
             }
         }
     },
-
+    "filters": {
+        "main_debate_filter": {
+            "()": "utils.log_main.MainDebateFilter"
+        },
+        "persuador_helper_filter": {
+            "()": "utils.log_main.PersuadorHelperFilter"
+        }
+    },
     "handlers": {
         "main_handler": {
             "class": "logging.FileHandler",
@@ -47,16 +55,7 @@
             "formatter": "json",
             "filters": ["persuador_helper_filter"],
             "level": "DEBUG"
-        },
-        // "queue_handler": {
-        //     "class": "logging.FileHandler",
-        //     "handlers": [
-        //         "main_handler",
-        //         "debug_handler",
-        //         "persuador_helper_handler"
-        //     ],
-        //     "respect_handler_level": true
-        // }
+        }
     },
     "loggers": {
         "debate_logger": {
