@@ -5,8 +5,7 @@ import logging
 
 # Direct import from project structure
 from core.interfaces import LLMInterface
-
-logger = logging.getLogger(__name__)
+from utils.log_main import logger   
 
 class OpenAIClient(LLMInterface):
     """LLM client implementation for OpenAI API. Manages system prompt internally."""
@@ -37,7 +36,7 @@ class OpenAIClient(LLMInterface):
                     prompt_system_message_content = msg.get("content")
                 else:
                     # Log if multiple system messages are found in the input prompt itself
-                    logger.error("Multiple system messages found in generate() prompt; using the first one.")
+                    logger.error("Multiple system messages found in generate() prompt; using the first one.", extra={"msg_type": "system_message"})
             else:
                 other_messages.append(msg)
 
@@ -50,12 +49,13 @@ class OpenAIClient(LLMInterface):
             if self.system_instruction:
                 # Compare the two system instructions/prompts
                 if prompt_system_message_content == self.system_instruction:
-                        logger.warning("System instruction provided during init and a matching system message found in generate() prompt.")
+                    logger.warning("System instruction provided during init and a matching system message found in generate() prompt.", extra={"msg_type": "system_message"})
                 else:
-                        logger.error("CONFLICT: System instruction provided during init differs from system message in generate() prompt. Prioritizing the one from generate(), but check configuration.")
+                    logger.error("CONFLICT: System instruction provided during init differs from system message in generate() prompt. Prioritizing the one from generate(), but check configuration.", extra={"msg_type": "system_message"})
         elif self.system_instruction:
             # Fallback to init's system instruction
             messages_to_send.append({"role": "system", "content": self.system_instruction})
+            logger.debug("Using system instruction from init", extra={"msg_type": "system_message"})
 
         # Add the rest of the messages (user/assistant)
         messages_to_send.extend(other_messages)
@@ -72,11 +72,11 @@ class OpenAIClient(LLMInterface):
             **kwargs  
         }
         # Log request details at DEBUG level
-        logger.debug(f"OpenAI API Request: params={api_params}")
+        logger.debug("OpenAI API Request", extra={"msg_type": "API_request", "model": model})
 
         response = self.client.chat.completions.create(**api_params)
         
         # Log the raw response at DEBUG level
-        logger.debug(f"OpenAI API Response: {response}")
+        logger.debug("OpenAI API Response", extra={"msg_type": "API_response", "model": model})
         
         return response.choices[0].message.content.strip()

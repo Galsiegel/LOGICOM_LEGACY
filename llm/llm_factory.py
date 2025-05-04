@@ -6,7 +6,7 @@ from llm.openai_client import OpenAIClient
 from llm.gemini_client import GeminiClient
 from llm.local_client import OllamaClient 
 
-logger = logging.getLogger(__name__)
+from utils.log_main import logger
 
 class LLMFactory:
     """Factory class to create LLM client instances."""
@@ -72,7 +72,7 @@ class LLMFactory:
             # Remove None values to avoid passing them to OllamaClient if not set
             ollama_args = {k: v for k, v in ollama_args.items() if v is not None}
 
-            logger.info(f"Instantiating OllamaClient with args: base_url='{api_base_url}', model='{ollama_args.get('model')}', system='{ollama_args.get('system', 'Not Set')}'") 
+            logger.debug(f"Instantiating OllamaClient", extra={"msg_type": "system_message", "model": ollama_args['model']}) 
             return OllamaClient(**ollama_args)
 
         else:
