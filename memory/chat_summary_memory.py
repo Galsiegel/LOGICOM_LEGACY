@@ -4,8 +4,7 @@ import logging
 
 from core.interfaces import MemoryInterface, LLMInterface, INTERNAL_USER_ROLE, INTERNAL_AI_ROLE
 from utils.token_utils import calculate_chat_tokens, calculate_string_tokens
-
-logger = logging.getLogger(__name__)
+from utils.log_main import logger
 
 
 class ChatSummaryMemory(MemoryInterface):
@@ -32,6 +31,7 @@ class ChatSummaryMemory(MemoryInterface):
 
     def add_user_message(self, message: str) -> None:
         """Adds a user message using the internal standard role."""
+        logger.debug("Adding user message to memory", extra={"msg_type": "memory_operation", "role": INTERNAL_USER_ROLE}) #TODO:: check_log
         entry = {"role": INTERNAL_USER_ROLE, "content": message}
         self.messages.append(entry)
         self.log.append({"type": "message", "data": deepcopy(entry)})
@@ -39,6 +39,7 @@ class ChatSummaryMemory(MemoryInterface):
 
     def add_ai_message(self, message: str, **kwargs) -> None:
         """Adds an AI message using the internal standard role."""
+        logger.debug("Adding AI message to memory", extra={"msg_type": "memory_operation", "role": INTERNAL_AI_ROLE}) #TODO:: check_log
         entry = {"role": INTERNAL_AI_ROLE, "content": message}
         self.messages.append(entry)
         self.log.append({"type": "message", "data": deepcopy(entry), "metadata": kwargs})
@@ -79,17 +80,18 @@ class ChatSummaryMemory(MemoryInterface):
         """Checks token count and triggers summarization if trigger threshold is exceeded."""
         # Allow disabling summarization via trigger_tokens <= 0
         if self.summarization_trigger_tokens <= 0:
-            logger.debug("Summarization trigger token limit is 0 or less. Skipping context length check.")
+            logger.debug("Summarization trigger token limit is 0 or less. Skipping context length check.", extra={"msg_type": "memory_operation"})
             return
             
         current_tokens = calculate_chat_tokens(self.messages)
-        logger.debug(f"Current prompt token count estimate: {current_tokens}")
+        logger.debug(f"Current prompt token count estimate: {current_tokens}", extra={"msg_type": "memory_operation"})
 
         # Trigger based on summarization_trigger_tokens
         if current_tokens > self.summarization_trigger_tokens:
             logger.warning(
                 f"Token count ({current_tokens}) exceeds trigger threshold ({self.summarization_trigger_tokens}). "
-                f"Attempting summarization (Target prompt size: {self.target_prompt_tokens})..."
+                f"Attempting summarization (Target prompt size: {self.target_prompt_tokens})...",
+                extra={"msg_type": "memory_operation"}
             )
             self._summarize()
         
@@ -99,7 +101,7 @@ class ChatSummaryMemory(MemoryInterface):
         """
         num_to_keep = self.keep_messages_after_summary
         if len(self.messages) <= num_to_keep:
-            logger.info("Not enough messages to summarize significantly.")
+            logger.info("Not enough messages to summarize significantly.", extra={"msg_type": "memory_operation"})
             return
 
         messages_to_summarize = self.messages[:-num_to_keep]
@@ -114,9 +116,8 @@ class ChatSummaryMemory(MemoryInterface):
         # Calculate prompt tokens
         prompt_tokens = calculate_chat_tokens(summarizer_prompt)
         
-        logger.info(f"Calling summarizer LLM ({self.summarizer_llm.__class__.__name__}) to summarize {len(messages_to_summarize)} messages...")
+        logger.info(f"Calling summarizer LLM to summarize messages.", extra={"msg_type": "memory_operation"})
         summary = self.summarizer_llm.generate(summarizer_prompt)
-        logger.info("Summarization attempt complete.")
 
         # Calculate completion tokens
         completion_tokens = calculate_string_tokens(summary) if summary else 0
@@ -140,10 +141,10 @@ class ChatSummaryMemory(MemoryInterface):
                 "context_injection": summary_content
             })
             new_token_count = calculate_chat_tokens(self.messages)
-            logger.info(f"History summarized. New token count estimate: {new_token_count}")
+            logger.info(f"History summarized. New token count estimate: {new_token_count}", extra={"msg_type": "memory_operation"})
         else:
             # Handle case where generate() succeeded but returned None or empty string
-            error_msg = f"Summarization failed: LLM returned empty summary."
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) 
+
+            logger.error("Summarization failed: LLM returned empty summary.", extra={"msg_type": "memory_operation"})
+            raise RuntimeError("Summarization failed: LLM returned empty summary.") 
 
