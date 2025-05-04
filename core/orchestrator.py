@@ -12,7 +12,6 @@ from agents.persuader_agent import PersuaderAgent
 from agents.debater_agent import DebaterAgent
 from agents.moderator_agent import ModeratorAgent # For type hints
 from core.interfaces import MemoryInterface # For type hinting if needed
-from utils.log_debate import save_debate_log
 from core.interfaces import INTERNAL_USER_ROLE, INTERNAL_AI_ROLE # Import standard roles
 from utils.log_main import logger # Import custom logger
 
@@ -75,7 +74,7 @@ class DebateOrchestrator:
         # --- Main Debate Loop --- 
         while keep_talking and round_number < self.max_rounds:
             round_number += 1
-            print(f"{self.ROUND_COLOR}\n--- Round {round_number} ---{self.RESET_ALL}")
+            logger.debug(f"\n--- Round number is {round_number} ---", extra={"msg_type": "main debate", "round": round_number})
 
             # Run Persuader's turn
             current_persuader_response = self._run_persuader_turn(debater_response)
@@ -137,7 +136,7 @@ class DebateOrchestrator:
         opponent_message = previous_debater_response if previous_debater_response else None
         persuader_response = self.persuader.call(opponent_message)
             
-        print(f"{self.PERSUADER_COLOR}Persuader: {persuader_response}{self.RESET_ALL}")
+       # logger.debug(f"Persuader: {persuader_response}", extra={"msg_type": "main debate", "speaker": "persuader"})
         return persuader_response
 
 
@@ -145,7 +144,7 @@ class DebateOrchestrator:
         """Run the debater's turn in the debate."""
 
         debater_response = self.debater.call(persuader_message)
-        print(f"{self.DEBATER_COLOR}Debater: {debater_response}{self.RESET_ALL}")
+        #logger.debug(f"Debater: {debater_response}", extra={"msg_type": "debate_verbose", "speaker": "debater"})
             
         return debater_response
 
@@ -174,7 +173,7 @@ class DebateOrchestrator:
 
     def _run_termination_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
         """Run the termination check moderation and handle the result."""
-        print(f"{self.MODERATOR_COLOR}Moderator checking termination...{self.RESET_ALL}")
+       # logger.debug(f"Moderator checking termination...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         termination_result = self.moderator_terminator.call(history)
         moderator_logs.append({
@@ -184,12 +183,12 @@ class DebateOrchestrator:
         raw_text = termination_result.strip().upper()
         if '<TERMINATE>' in raw_text:
             logger.debug("Parser found TERMINATE signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            print(f"{self.MODERATOR_COLOR}Moderator Termination Check: TERMINATE.{self.RESET_ALL}")
+          #  logger.debug(f"Moderator Termination Check: TERMINATE.", extra={"msg_type": "main debate", "speaker": "moderator"})
             return False
         
         elif '<KEEP-TALKING>' in raw_text:
             logger.debug("Parser found KEEP-TALKING signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            print(f"{self.MODERATOR_COLOR}Moderator Termination Check: Continue debate.{self.RESET_ALL}")
+            #logger.debug(f"Moderator Termination Check: Continue debate.", extra={"msg_type": "main debate", "speaker": "moderator"})
             return True
         
         else: #TODO: Decide if this should be a warning or an error
@@ -199,7 +198,7 @@ class DebateOrchestrator:
 
     def _run_topic_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
         """Run the topic check moderation."""
-        print(f"{self.MODERATOR_COLOR}Moderator checking topic...{self.RESET_ALL}")
+       # logger.debug(f"Moderator checking topic...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         topic_result = self.moderator_topic.call(history)
         moderator_logs.append({
@@ -227,36 +226,22 @@ class DebateOrchestrator:
                         final_result_status: str, finish_reason: str, log_config: Dict[str, Any], 
                         helper_type_name: str) -> Dict[str, Any]:
         """Finalize the debate by saving logs and preparing results."""
-        logger.info(f"\n--- Debate Ended --- Round: {round_number}, Status: {final_result_status}, Reason: {finish_reason} ---", extra={"msg_type": "main debate", "sender": "orchestrator"})
-
-        # Save debate logs
-        log_base_path = log_config.get('log_base_path', './logs')
-        log_formats = log_config.get('log_formats', ['json', 'html'])
-        final_history = self.persuader.memory.get_history()
-
-        save_debate_log(
-            log_history=final_history,
-            log_base_path=log_base_path,
-            topic_id=topic_id,
-            chat_id=chat_id,
-            helper_type=helper_type_name,
-            result=final_result_status,
-            number_of_rounds=round_number,
-            finish_reason=finish_reason,
-            claim=claim,
-            save_formats=log_formats
-        )
-
-        # Calculate and log token usage
+        # Calculate token usage
         token_usage = self._calculate_token_usage()
-       
+        
+        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage
+        logger.info(f"Debate ended with result: {final_result_status} !!!!", 
+                   extra={"msg_type": "main debate", "sender": "orchestrator", "topic_id": topic_id, 
+                          "chat_id": chat_id, "helper_type": helper_type_name, "result": final_result_status, 
+                          "rounds": round_number, "finish_reason": finish_reason, "claim": claim,
+                          "token_usage": token_usage})
 
+        # Return just the essential summary information
         return {
+            "status": "Success",
             "result": final_result_status,
             "rounds": round_number,
-            "finish_reason": finish_reason,
-            "chat_id": chat_id,
-            "topic_id": topic_id,
+            "finish_reason": finish_reason, 
             "total_tokens_estimate": token_usage
         }
     #TODO, make the agents independent of the orchestrator

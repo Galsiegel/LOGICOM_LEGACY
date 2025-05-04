@@ -8,9 +8,9 @@
         "json": {
             "()": "utils.log_main.MyJSONFormatter",
             "fmt_keys": {
+                "timestamp": "timestamp",
                 "level": "levelname",
                 "message": "message",
-                "timestamp": "timestamp",
                 "logger": "name",
                 "module": "module",
                 "function": "funcName",
@@ -18,13 +18,8 @@
                 "thread_name": "threadName"
             }
         },
-        "html": {
-            "()": "utils.log_main.MyHTMLFormatter",
-            "fmt_keys": {
-                "level": "levelname",
-                "message": "message",
-                "timestamp": "timestamp"
-            }
+        "console": {
+            "format": "%(asctime)s [%(levelname)s] %(message)s"
         }
     },
     "filters": {
@@ -33,6 +28,9 @@
         },
         "persuador_helper_filter": {
             "()": "utils.log_main.PersuadorHelperFilter"
+        },
+        "system_message_filter": {
+            "()": "utils.log_main.SystemMessageFilter"
         }
     },
     "handlers": {
@@ -55,11 +53,18 @@
             "formatter": "json",
             "filters": ["persuador_helper_filter"],
             "level": "DEBUG"
+        },
+
+        "console_handler": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+            "filters": ["system_message_filter"],
+            "level": "DEBUG"
         }
     },
     "loggers": {
         "debate_logger": {
-            "handlers": ["main_handler", "debug_handler", "persuador_helper_handler"],
+            "handlers": ["main_handler", "debug_handler", "persuador_helper_handler", "console_handler"],
             "level": "DEBUG",
             "propagate": false
         }

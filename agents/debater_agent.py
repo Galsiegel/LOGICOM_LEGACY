@@ -53,6 +53,7 @@ class DebaterAgent(BaseAgent):
         self.memory.add_ai_message(response_content, **log_metadata)
         logger.info("Debater added his own response to memory", 
                    extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name, "agent_name": self.agent_name})
-        
+        logger.info(f"Debater response: {response_content}", 
+                   extra={"msg_type": "main debate", "sender": "debater", "receiver": "persuador"})
         return response_content
 

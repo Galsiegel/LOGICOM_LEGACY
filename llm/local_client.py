@@ -4,8 +4,7 @@ import ollama
 
 # Direct import from project structure
 from core.interfaces import LLMInterface
-
-logger = logging.getLogger(__name__)
+from utils.log_main import logger
 
 class OllamaClient(LLMInterface):
     """LLM client implementation for Ollama API using the official library."""
@@ -29,7 +28,7 @@ class OllamaClient(LLMInterface):
         # Initialize the ollama client targeting the specified host or default
         # The 'host' parameter in ollama.Client corresponds to the base_url
         self.client = ollama.Client(host=base_url) 
-        logger.info(f"Initialized OllamaClient for model '{self.model}' at host '{base_url or 'default'}. System prompt {'set' if self.system else 'not set'}.\"")
+        logger.debug(f"Initialized OllamaClient for model '{self.model}'", extra={"msg_type": "system", "model": self.model})
 
     def _prepare_messages(self, prompt: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """Prepares messages for the Ollama API. 

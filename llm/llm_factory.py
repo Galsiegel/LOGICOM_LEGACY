@@ -72,7 +72,7 @@ class LLMFactory:
             # Remove None values to avoid passing them to OllamaClient if not set
             ollama_args = {k: v for k, v in ollama_args.items() if v is not None}
 
-            logger.debug(f"Instantiating OllamaClient", extra={"msg_type": "system_message", "model": ollama_args['model']}) 
+            logger.debug(f"Instantiating OllamaClient", extra={"msg_type": "system", "model": ollama_args['model']}) 
             return OllamaClient(**ollama_args)
 
         else:

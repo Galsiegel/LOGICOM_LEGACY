@@ -9,7 +9,7 @@ import json
 import logging.config
 
 # --- Direct Imports ---
-from utils.log_main import logger as debate_logger  # Import our custom logger
+from utils.log_main import logger as debate_logger, setup_logging 
 from utils.set_api_keys import set_environment_variables_from_file, API_KEYS_PATH
 from config.loader import load_app_config
 from core.orchestrator import DebateOrchestrator
@@ -33,38 +33,20 @@ def define_arguments() -> argparse.Namespace:
                         help="Path to the main settings configuration file.")
     parser.add_argument("--models_path", default="./config/models.yaml", 
                         help="Path to the LLM models configuration file.")
+    parser.add_argument("--max_rounds", type=int, default=None,
+                        help="Override the maximum number of debate rounds (default is from settings.yaml)")
     args = parser.parse_args()
     return args
 
 # --- Main Execution Logic --- 
 def main():
+    # Print statement to verify the script is running
+    print("Starting application - initializing logging...")
+    
     # --- Central Logging Configuration ---
-    # Load configuration from JSON file
-    log_config_path = "config/log.json"
-    if os.path.exists(log_config_path):
-        try:
-            with open(log_config_path, 'r') as f:
-                config = json.load(f)
-                
-            # Create log directories if they don't exist
-            for handler in config.get('handlers', {}).values():
-                if 'filename' in handler:
-                    log_dir = os.path.dirname(handler['filename'])
-                    if log_dir and not os.path.exists(log_dir):
-                        os.makedirs(log_dir)
-            
-            # Apply configuration
-            logging.config.dictConfig(config)
-            logger.info(f"Logging configuration loaded from {log_config_path}")
-        except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid JSON in logging config file {log_config_path}: {e}")
-            sys.exit(1)
-        except Exception as e:
-            print(f"ERROR: Failed to configure logging from {log_config_path}: {e}")
-            sys.exit(1)
-    else:
-        print(f"ERROR: Logging config file not found at {log_config_path}")
-        sys.exit(1)
+    # Use our custom setup_logging function instead of manual configuration
+    setup_logging()
+    
     
     # --- Suppress noisy logs from underlying libraries ---
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -139,7 +121,6 @@ def main():
              logger.critical(f"Error reading initial prompt template {initial_prompt_path}: {e}", exc_info=True); sys.exit(1)
 
         # --- Run Debates Loop --- 
-        results_summary = []
         topic_id_col = debate_settings.get('topic_id_column', 'id')
         claim_col = debate_settings.get('claim_column', 'claim')
 
@@ -171,14 +152,14 @@ def main():
                     debater=setup.debater,
                     moderator_terminator=setup.moderator_terminator,
                     moderator_topic_checker=setup.moderator_topic_checker,
-                    max_rounds=int(debate_settings.get('max_rounds', 12))
+                    max_rounds=args.max_rounds if args.max_rounds is not None else int(debate_settings.get('max_rounds', 12))
                 )
                 logger.debug(f"Orchestrator setup complete")
                 
                 # Run debate
                 run_result = orchestrator.run_debate(
                     topic_id=topic_id, claim=claim_text,
-                    log_config=debate_settings, 
+                    log_config=debate_settings,
                     helper_type_name=helper_type_name
                 )
                 logger.debug(f"Debate run complete")
@@ -194,29 +175,19 @@ def main():
                     "status": "ERROR",
                     "error_message": str(e)
                 }
-            results_summary.append(run_result)
+            
+            # Log run completion
+            logger.info(f"Debate run complete", extra={"msg_type": "main debate", 
+                        "topic_id": topic_id, "claim_index": index, "status": "Success",
+                        "result": run_result.get("result"), "rounds": run_result.get("rounds")})
 
-        # --- Print Summary --- 
-        logger.info("\n===== Debate Run Summary ====", extra={"msg_type": "system"})
-        successful_runs = [r for r in results_summary if r.get('status') == 'Success']
-        failed_runs = [r for r in results_summary if r.get('status') == 'ERROR']
-        logger.info(f"Total Debates Run: {len(results_summary)}", 
-                   extra={"msg_type": "system", "total_runs": len(results_summary)})
-        logger.info(f"Successful: {len(successful_runs)}", 
-                   extra={"msg_type": "system", "successful_runs": len(successful_runs)})
-        logger.info(f"Failed: {len(failed_runs)}", 
-                   extra={"msg_type": "system","failed_runs": len(failed_runs)})
-        if failed_runs:
-             logger.warning("\nFailed Runs:", extra={"msg_type": "system"})
-             for fail in failed_runs:
-                  logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Error: {fail.get('error_message','Unknown')}", 
-                                extra={"msg_type": "system"})
+        # At the end, instead of processing in-memory results:
+        logger.info(f"All debates completed", extra={"msg_type": "system"})
 
     except Exception as e:
         logger.critical(f"\nAn unexpected error occurred in main execution: {e}", 
                        extra={"msg_type": "system"})
         sys.exit(1)
-
 
 if __name__ == '__main__':
     main() 

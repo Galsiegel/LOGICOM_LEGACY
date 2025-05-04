@@ -33,15 +33,15 @@ class GeminiClient(LLMInterface):
             # Prepare arguments for GenerativeModel, including system_instruction if provided
             model_kwargs = {}
             if self.system_instruction:
-                logger.debug(f"Initializing Gemini model {self.model_name} with system instruction.", extra={"msg_type": "system_message"})
+                logger.debug(f"Initializing Gemini model {self.model_name} with system instruction.", extra={"msg_type": "system"})
                 model_kwargs['system_instruction'] = self.system_instruction
             else:
-                logger.debug(f"Initializing Gemini model {self.model_name} without system instruction.", extra={"msg_type": "system_message"})
+                logger.debug(f"Initializing Gemini model {self.model_name} without system instruction.", extra={"msg_type": "system"})
             
             self.model = genai.GenerativeModel(self.model_name, **model_kwargs)
 
         except Exception as e:
-            logger.error(f"Failed to configure Google GenAI or create model: {e}", extra={"msg_type": "system_message"})
+            logger.error(f"Failed to configure Google GenAI or create model: {e}", extra={"msg_type": "system"})
             raise
 
     def _convert_prompt_format(self, prompt: List[Dict[str, str]]) -> List[Dict[str, Any]]:
@@ -61,7 +61,7 @@ class GeminiClient(LLMInterface):
                 # System instruction is handled at model initialization, skip here.
                 # Log a warning that it was received but won't be directly used.
                 if content:
-                     logger.warning("Gemini received a system message in the prompt. Gemini API only supports a system_instruction at init. This will be ignored in the message history.", extra={"msg_type": "system_message"})
+                     logger.warning("Gemini received a system message in the prompt. Gemini API only supports a system_instruction at init. This will be ignored in the message history.", extra={"msg_type": "system"})
                      if prompt_system_message_content is None: # Store the first one found
                           prompt_system_message_content = content
                 continue 
@@ -72,13 +72,13 @@ class GeminiClient(LLMInterface):
                 gemini_prompt.append({'role': self.GEMINI_MODEL_ROLE, 'parts': [content]})
             else:
                 # Log unexpected roles but don't necessarily fail, let API handle it?
-                logger.warning(f"Gemini client received message with unexpected role '{role}'. Passing through.", extra={"msg_type": "system_message"})
+                logger.warning(f"Gemini client received message with unexpected role '{role}'. Passing through.", extra={"msg_type": "system"})
                 gemini_prompt.append({'role': role, 'parts': [content]}) # Pass unknown roles as-is
         
         # After the loop, compare the found system message (if any) with the init one
         if prompt_system_message_content is not None and self.system_instruction is not None:
              if prompt_system_message_content != self.system_instruction:
-                  logger.error("CONFLICT: System instruction provided during init differs from system message found in prompt. Using the init instruction.", extra={"msg_type": "system_message"})
+                  logger.error("CONFLICT: System instruction provided during init differs from system message found in prompt. Using the init instruction.", extra={"msg_type": "system"})
 
         # Note: Assumes alternating user/model roles in the input after system message removal.
         # TODO: Add validation or merging logic if needed.

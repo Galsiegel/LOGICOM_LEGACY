@@ -2,7 +2,12 @@ import logging
 import json
 import datetime as st
 from typing import override
+import queue
+import logging.config
+import os
 
+# Create a queue for log records
+log_queue = queue.Queue(-1)  # No limit on size
 
 logger = logging.getLogger("debate_logger")
 
@@ -31,22 +36,14 @@ class MyJSONFormatter(logging.Formatter):
                 message[key] = getattr(record, val)
         
         # Add specific extra attributes we care about
-        for attr in ["msg_type", "speaker", "receiver", "sender", "round", "topic"]:
+        for attr in ["msg_type", "speaker", "receiver", "sender", "round", "topic", 
+                    "topic_id", "chat_id", "helper_type", "result", "finish_reason", 
+                    "rounds", "claim", "token_usage"]:
             if hasattr(record, attr) and attr not in message:
                 message[attr] = getattr(record, attr)
-                
+        
         message.update(always_include)
         return message
-#default html, will be changed to a more useful format
-class MyHTMLFormatter(logging.Formatter):
-    def __init__(self, fmt_keys: dict):
-        self.fmt_keys = fmt_keys if fmt_keys is not None else {}
-        super().__init__()
-    
-    def format(self, record: logging.LogRecord):
-        # Simple HTML format, change to fit the original format
-        message = record.getMessage()
-        return f"<div>{message}</div>"
 
 # Filter classes for directing logs to the right handlers
 class MainDebateFilter(logging.Filter):
@@ -58,5 +55,38 @@ class PersuadorHelperFilter(logging.Filter):
     """Filter that only allows log records related to persuador-helper communication"""
     def filter(self, record):
         return getattr(record, "msg_type", None) == "persuador_helper"
+
+class SystemMessageFilter(logging.Filter):
+    """Filter that only allows log records with msg_type = 'system'"""
+    def filter(self, record):
+        return getattr(record, "msg_type", None) == "system"
+
+def setup_logging():
+    """Initialize logging configuration with proper queue setup"""
+    # Ensure logs directory exists
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+        
+    # Load the logging configuration
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'log.json')
+    
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            
+        # Configure the queue handler to use our queue
+        if 'handlers' in config and 'queue_handler' in config['handlers']:
+            config['handlers']['queue_handler']['queue'] = log_queue
+            
+        logging.config.dictConfig(config)
+        
+        # Start a QueueListener to handle records from the queue if needed
+        # This is commented out as you might want to customize how you process the queue
+        # from logging.handlers import QueueListener
+        # listener = QueueListener(log_queue, <handlers>)
+        # listener.start()
+    else:
+        logging.basicConfig(level=logging.INFO)
+        logger.warning(f"Logging config not found at {config_path}. Using basic configuration.")
 
 

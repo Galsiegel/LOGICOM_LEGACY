@@ -15,17 +15,17 @@ def load_yaml_config(file_path: str) -> Dict[str, Any]:
         with open(file_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             if config is None:
-                logger.warning(f"Config file {file_path} is empty.", extra={"msg_type": "system_message"})
+                logger.warning(f"Config file {file_path} is empty.", extra={"msg_type": "system"})
                 return {}
             return config
     except FileNotFoundError:
-        logger.error(f"Configuration file not found at {file_path}", extra={"msg_type": "system_message"})
+        logger.error(f"Configuration file not found at {file_path}", extra={"msg_type": "systeme"})
         raise
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file {file_path}: {e}", extra={"msg_type": "system_message"})
+        logger.error(f"Error parsing YAML file {file_path}: {e}", extra={"msg_type": "system"})
         raise
     except Exception as e:
-        logger.error(f"An unexpected error occurred loading config {file_path}: {e}", extra={"msg_type": "system_message"})
+        logger.error(f"An unexpected error occurred loading config {file_path}: {e}", extra={"msg_type": "system"})
         raise
 
 def load_app_config(settings_path: str = DEFAULT_SETTINGS_PATH, 
@@ -41,8 +41,8 @@ def load_app_config(settings_path: str = DEFAULT_SETTINGS_PATH,
     Returns:
         A dictionary containing the combined configuration.
     """
-    logger.debug(f"Loading settings from: {settings_path}", extra={"msg_type": "system_message"})
-    logger.debug(f"Loading models from: {models_path}", extra={"msg_type": "system_message"})
+    logger.debug(f"Loading settings from: {settings_path}", extra={"msg_type": "system"})
+    logger.debug(f"Loading models from: {models_path}", extra={"msg_type": "system"})
     
     settings_config = load_yaml_config(settings_path)
     models_config = load_yaml_config(models_path)
@@ -72,6 +72,6 @@ def load_app_config(settings_path: str = DEFAULT_SETTINGS_PATH,
                 if llm_ref_helper and llm_ref_helper in resolved_llm_providers:
                      agent_details['_resolved_llm_config_helper'] = resolved_llm_providers[llm_ref_helper]
 
-    logger.debug("Loaded agent configurations", extra={"msg_type": "system_message"})
+    logger.debug("Loaded agent configurations", extra={"msg_type": "system"})
     return combined_config
 

@@ -36,7 +36,7 @@ class OpenAIClient(LLMInterface):
                     prompt_system_message_content = msg.get("content")
                 else:
                     # Log if multiple system messages are found in the input prompt itself
-                    logger.error("Multiple system messages found in generate() prompt; using the first one.", extra={"msg_type": "system_message"})
+                    logger.error("Multiple system messages found in generate() prompt; using the first one.", extra={"msg_type": "system"})
             else:
                 other_messages.append(msg)
 
@@ -49,13 +49,13 @@ class OpenAIClient(LLMInterface):
             if self.system_instruction:
                 # Compare the two system instructions/prompts
                 if prompt_system_message_content == self.system_instruction:
-                    logger.warning("System instruction provided during init and a matching system message found in generate() prompt.", extra={"msg_type": "system_message"})
+                    logger.warning("System instruction provided during init and a matching system message found in generate() prompt.", extra={"msg_type": "system"})
                 else:
-                    logger.error("CONFLICT: System instruction provided during init differs from system message in generate() prompt. Prioritizing the one from generate(), but check configuration.", extra={"msg_type": "system_message"})
+                    logger.error("CONFLICT: System instruction provided during init differs from system message in generate() prompt. Prioritizing the one from generate(), but check configuration.", extra={"msg_type": "system"})
         elif self.system_instruction:
             # Fallback to init's system instruction
             messages_to_send.append({"role": "system", "content": self.system_instruction})
-            logger.debug("Using system instruction from init", extra={"msg_type": "system_message"})
+            logger.debug(f"Using system instruction from init openai_client.py for {self.model_name}", extra={"msg_type": "system"})
 
         # Add the rest of the messages (user/assistant)
         messages_to_send.extend(other_messages)
