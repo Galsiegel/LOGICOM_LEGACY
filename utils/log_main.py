@@ -54,7 +54,7 @@ class MainDebateFilter(logging.Filter):
 class PersuadorHelperFilter(logging.Filter):
     """Filter that only allows log records related to persuador-helper communication"""
     def filter(self, record):
-        return getattr(record, "msg_type", None) == "persuador_helper"
+        return getattr(record, "msg_type", None) == "helper_operation"
 
 class SystemMessageFilter(logging.Filter):
     """Filter that only allows log records with msg_type = 'system'"""

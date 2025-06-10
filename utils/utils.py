@@ -31,16 +31,14 @@ def create_debate_directory(topic_id, chat_id, helper_type):
     if not os.path.exists(topic_dir):
         os.makedirs(topic_dir)
         logger.info(f"Created topic directory: {topic_dir}", extra={"msg_type": "system"})
-        
-        # Create the three helper-type subdirectories
-        for helper in ["no_helper", "vanilla_helper", "fallacy_helper"]:
-            helper_dir = os.path.join(topic_dir, helper) #creates debates/topic_id/helper
-            os.makedirs(helper_dir)
-            logger.info(f"Created helper directory: {helper_dir}", extra={"msg_type": "system"})
     
+    # Create helper-type subdirectory if it doesn't exist
+    helper_dir = os.path.join(topic_dir, helper_type)
+    if not os.path.exists(helper_dir):
+        os.makedirs(helper_dir)
+        logger.info(f"Created helper directory: {helper_dir}", extra={"msg_type": "system"})
     
     # Saving current debate:
-
     chat_dir = os.path.join(topic_dir, helper_type, str(chat_id))
     if os.path.exists(chat_dir): #Shouldnt happen, because chat_id is random
         logger.warning(f"Chat directory already exists: {chat_dir}", extra={"msg_type": "system"})

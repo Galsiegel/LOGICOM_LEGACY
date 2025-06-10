@@ -11,6 +11,21 @@ from core.interfaces import INTERNAL_USER_ROLE, INTERNAL_AI_ROLE
 
 logger = logging.getLogger(__name__) # Added
 
+
+
+
+
+
+############################### This file isn't used !!! , only here as refrece for the meantime ######################
+
+
+
+
+
+
+
+
+
 # --- Logging --- 
 
 def create_directory(directory_path: str, overwrite: bool = True) -> None:
@@ -167,9 +182,9 @@ def _save_log_xlsx(xlsx_path: str, data_to_append: Dict[str, Any]) -> None:
     # Define expected columns based on original structure
     # This structure might need updating based on refactored goals
     all_columns = ["Topic_ID", "Claim", 
-                   "No_Helper", "Vanilla_Helper", "Fallacy_Helper", # Result columns per helper type
-                   "No_Helper_Round", "Vanilla_Helper_Round", "Fallacy_Helper_Round", # Round columns
-                   "Chat_ID_No_Helper", "Chat_ID_Vanilla_Helper", "Chat_ID_Fallacy_Helper"] # Chat ID columns
+                   "No_Helper", "Fallacy_Helper", "Logical_Helper", # Result columns per helper type
+                   "No_Helper_Round", "Fallacy_Helper_Round", "Logical_Helper_Round", # Round columns
+                   "Chat_ID_No_Helper", "Chat_ID_Fallacy_Helper", "Chat_ID_Logical_Helper"] # Chat ID columns
     
     result_col = f'{helper_type}'
     round_col = f'{helper_type}_Round'

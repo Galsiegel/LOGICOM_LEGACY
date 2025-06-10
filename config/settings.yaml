@@ -132,3 +132,4 @@ agent_configurations:
       llm_config_ref: gemini_15_flash_8b 
       prompt_terminator_path: ./prompts/moderator/moderator_terminator_instruction.txt
       prompt_topic_checker_path: ./prompts/moderator/moderator_topic_instruction.txt
+      prompt_conviction_path: ./prompts/moderator/moderator_conviction_instruction.txt
