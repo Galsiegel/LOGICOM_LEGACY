@@ -112,21 +112,21 @@ def _run_single_debate(index: int,
     topic_id = "N/A"
     run_result = {}
     try:
-        # Format prompts for this claim (includes extracting topic_id, claim_text)
-        formatted_prompts, topic_id, claim_text = format_prompts_for_claim(debate_settings, claim_data, prompt_templates)
-
-        # Log start using extracted topic_id
-        logger.info(f"\n===== Preparing Claim Index: {index}, Topic ID: {topic_id} ====", extra={"msg_type": "system"})
-        
         # Generate chat ID early
         chat_id = str(uuid.uuid4())
         if not chat_id:
-            logger.error(f"Failed to generate a valid chat_id for topic {topic_id}", extra={"msg_type": "system"})
+            logger.error(f"Failed to generate a valid chat_id", extra={"msg_type": "system"})
             raise ValueError("Failed to generate a valid chat_id")
-        
-        # Create directory structure for logs
+
+        # Format prompts for this claim (includes extracting topic_id, claim_text)
+        formatted_prompts, topic_id, claim_text = format_prompts_for_claim(debate_settings, claim_data, prompt_templates)
+
+        # Create directory structure for logs - do this early before anything can fail
         chat_dir = create_debate_directory(topic_id, chat_id, helper_type)
         logger.info(f"Created debate chat directory: {chat_dir}", extra={"msg_type": "system"})
+
+        # Log start using extracted topic_id
+        logger.info(f"Preparing Claim Index: {index}, Topic ID: {topic_id}", extra={"msg_type": "system"})
 
         # Instantiate setup class for this claim
         setup = DebateInstanceSetup(
@@ -157,8 +157,7 @@ def _run_single_debate(index: int,
         
         # --- Post-Debate Processing ---
         # Save all log files to the debate directory
-        save_success = save_debate_logs(chat_dir, remove_originals=True)
-        if save_success:
+        if save_debate_logs(chat_dir, remove_originals=True):
             logger.info(f"Successfully saved logs to {chat_dir}", extra={"msg_type": "system"})
         else:
             logger.warning(f"Failed to save logs to {chat_dir}", extra={"msg_type": "system"})
@@ -172,20 +171,13 @@ def _run_single_debate(index: int,
         else:
             result_code = 2  # For "Inconclusive", errors, etc.
         
-        # Prepare claim data as dictionary for Excel function
-        claim_data_dict = {
-            'claim': claim_text,
-            'topic_id': topic_id,
-            'index': index
-        }
-        
         # Save debate summary to Excel
         excel_success = save_debate_in_excel(
-            topic_id=topic_id,
-            claim_data=claim_data_dict,
-            helper_type=helper_type,
-            chat_id=chat_id,
-            result=result_code
+            topic_id,
+            claim_data,
+            helper_type,
+            chat_id,
+            result_code
         )
         if excel_success:
             logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})
@@ -213,19 +205,19 @@ def _run_single_debate(index: int,
         }
     return run_result
 
-# --- New Helper Function to Summarize Results --- 
-def _summarize_results(results_summary: List[Dict]):
-    """Logs the summary of successful and failed debate runs."""
-    logger.info("\n===== Debate Run Summary ====", extra={"msg_type": "system"})
-    successful_runs = [r for r in results_summary if r.get('status') == 'Success']
-    failed_runs = [r for r in results_summary if r.get('status') not in ['Success', None]] # Count ERROR and CONFIG_ERROR etc.
-    logger.info(f"Total Debates Attempted: {len(results_summary)}", extra={"msg_type": "system"})
-    logger.info(f"Successful: {len(successful_runs)}", extra={"msg_type": "system"})
-    logger.info(f"Failed: {len(failed_runs)}", extra={"msg_type": "system"})
-    if failed_runs:
-         logger.warning("\nFailed Runs:")
-         for fail in failed_runs:
-              logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Status: {fail.get('status', 'UNKNOWN')}, Error: {fail.get('error_message','Unknown')}", extra={"msg_type": "system"})
+# # --- New Helper Function to Summarize Results --- 
+# def _summarize_results(results_summary: List[Dict]):
+#     """Logs the summary of successful and failed debate runs."""
+#     logger.info("\n===== Debate Run Summary ====", extra={"msg_type": "system"})
+#     successful_runs = [r for r in results_summary if r.get('status') == 'Success']
+#     failed_runs = [r for r in results_summary if r.get('status') not in ['Success', None]] # Count ERROR and CONFIG_ERROR etc.
+#     logger.info(f"Total Debates Attempted: {len(results_summary)}", extra={"msg_type": "system"})
+#     logger.info(f"Successful: {len(successful_runs)}", extra={"msg_type": "system"})
+#     logger.info(f"Failed: {len(failed_runs)}", extra={"msg_type": "system"})
+#     if failed_runs:
+#          logger.warning("\nFailed Runs:")
+#          for fail in failed_runs:
+#               logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Status: {fail.get('status', 'UNKNOWN')}, Error: {fail.get('error_message','Unknown')}", extra={"msg_type": "system"})
 
 # --- Main Execution Logic --- 
 def main():
@@ -276,7 +268,7 @@ def main():
         helper_type = agent_config['helper_type']
 
         # --- Run Debates Loop --- 
-        results_summary = []
+        # results_summary = []
         for index in tqdm(claim_indices_to_run, total=len(claim_indices_to_run), desc="Running Debates"):
             claim_data = claims_df.iloc[index]
             run_result = _run_single_debate(
@@ -287,10 +279,10 @@ def main():
                 prompt_templates=prompt_templates,
                 helper_type=helper_type
             )
-            results_summary.append(run_result)
+            # results_summary.append(run_result)
 
         # --- Print Summary --- 
-        _summarize_results(results_summary)
+        # _summarize_results(results_summary)
 
     except Exception as e:
         logger.critical(f"\nAn unexpected error occurred in main execution: {e}", 

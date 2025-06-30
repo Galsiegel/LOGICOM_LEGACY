@@ -2,9 +2,8 @@ import time
 import uuid
 import re # For parsing moderator responses
 from typing import Dict, Any, Optional, List, Tuple
-import logging
-import os
-import json 
+
+
 from colorama import Fore, Style
 
 # Direct imports from project structure
@@ -12,8 +11,6 @@ from agents.persuader_agent import PersuaderAgent
 from agents.debater_agent import DebaterAgent
 from agents.moderator_agent import ModeratorAgent # For type hints
 from core.interfaces import MemoryInterface # For type hinting if needed
-from utils.log_debate import save_debate_log
-from core.interfaces import INTERNAL_USER_ROLE, INTERNAL_AI_ROLE # Import standard roles
 from utils.log_main import logger
 
 
@@ -22,13 +19,6 @@ from utils.log_main import logger
 
 class DebateOrchestrator:
     """Orchestrates the debate, managing agent turns and moderation checks."""
-
-    PERSUADER_COLOR = Fore.BLUE
-    DEBATER_COLOR = Fore.GREEN
-    ROUND_COLOR = Fore.RED
-    MODERATOR_COLOR = Fore.YELLOW
-    ERROR_COLOR = Fore.RED + Style.BRIGHT
-    RESET_ALL = Style.RESET_ALL
 
     def __init__(self,
                  # Agents
@@ -39,8 +29,7 @@ class DebateOrchestrator:
                  moderator_conviction: ModeratorAgent,
                  # Settings
                  max_rounds: int,
-                 turn_delay_seconds: float,
-                 logger_instance: logging.Logger | None = None):
+                 turn_delay_seconds: float):
         self.persuader = persuader
         self.debater = debater
         self.moderator_terminator = moderator_terminator
@@ -144,7 +133,7 @@ class DebateOrchestrator:
         """Run the persuader's turn in the debate."""
         # --- Add Turn Delay ---
         if self.turn_delay_seconds > 0:
-            logger.info(f"Waiting for {self.turn_delay_seconds:.2f} seconds before debater's turn.")
+            logger.info(f"Waiting for {self.turn_delay_seconds:.2f} seconds before persuader's turn.")
             time.sleep(self.turn_delay_seconds)
         # ----------------------
 
