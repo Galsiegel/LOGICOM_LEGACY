@@ -6,11 +6,11 @@
 '<ON-TOPIC>'
 
 The conversation is about:
-topic:  " <TOPIC> "
+topic:  “ <TOPIC> ”
 claim: "<CLAIM>"
 reason: "<REASON>"
 
-I want you to check  if the conversation (the recent conversation) is about the topic:  " <TOPIC> "  or not.
+I want you to check  if the conversation (the recent conversation) is about the topic:  “ <TOPIC> ”  or not.
 If it is in topic send this signal:
 <ON-TOPIC>
 else:

@@ -155,8 +155,8 @@ class PersuaderAgent(BaseAgent):
         # Log the helper input for debugging
         logger.debug(f"Helper input - Original response: {persuader_response}", 
                    extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "operation": "input"})
-        # logger.debug(f"Helper input - Formatted instruction: {final_user_instruction[:500]}...", 
-        #            extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "operation": "input"})
+        logger.debug(f"Helper input - Formatted instruction: {final_user_instruction}...", 
+                    extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "operation": "input"})
 
         # Estimate helper prompt tokens
         prompt_tokens = calculate_chat_tokens(helper_prompt_history)

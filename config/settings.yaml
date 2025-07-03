@@ -36,13 +36,13 @@ debate_settings:
   fallacy_csv_path: ./logs/fallacies.csv 
   
   # Debate Flow Control
-  max_rounds: 12 
+  max_rounds: 10 
   # Delay between turns
-  turn_delay_seconds: 1
+  turn_delay_seconds: 0.4
   
   # Memory Management
-  summarization_trigger_tokens: 6000 # Token threshold to trigger summarization
-  target_prompt_tokens: 4000 # Target token limit for the prompt AFTER summarization
+  summarization_trigger_tokens: 4000 #Token threshold to trigger summarization
+  target_prompt_tokens: 2000 # Target token limit for the prompt AFTER summarization
   keep_messages_after_summary: 4 # How many recent messages to keep alongside summary
 
 agent_configurations:
@@ -68,7 +68,7 @@ agent_configurations:
       # Paths based on original hardcoded names for PaLM/Gemini prompts
       prompt_terminator_path: ./prompts/moderator/moderator_terminator_instruction.txt
       prompt_topic_checker_path: ./prompts/moderator/moderator_topic_instruction.txt
-      # model_config_override: { temperature: 0.5 } # Gemini client default is 0.5
+      model_config_override: { temperature: 0.5 }
 
   # --- Default with Fallacy Helper Enabled --- 
   Default_Fallacy_Helper:
@@ -78,7 +78,7 @@ agent_configurations:
       # Reference to LLM config in models.yaml
       model_name: gpt35_turbo
       model_config_override:
-        temperature: 1.0 
+        temperature: 1.0
 
       # Helper Feedback Config 
       helper_model_name: gpt35_turbo
@@ -91,6 +91,7 @@ agent_configurations:
 
     moderator:
       model_name: gemini_15_flash_8b
+      model_config_override: { temperature: 0.5 }
 
   # --- Default with Vanilla Helper Enabled --- 
   
@@ -113,7 +114,8 @@ agent_configurations:
         temperature: 1.0 
 
     moderator:
-      model_name: gemini_15_flash_8b 
+      model_name: gemini_15_flash_8b
+      model_config_override: { temperature: 0.5 } 
 
   # --- Example Configuration using Local Gemma --- 
   Local_Gemma_Test:

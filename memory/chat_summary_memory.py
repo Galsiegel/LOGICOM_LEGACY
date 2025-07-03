@@ -100,11 +100,13 @@ class ChatSummaryMemory(MemoryInterface):
            Raises RuntimeError if summarization fails.
         """
         num_to_keep = self.keep_messages_after_summary
-        if len(self.messages) <= num_to_keep:
+        # Need at least: first message + messages to summarize + last messages to keep
+        if len(self.messages) <= num_to_keep + 1:
             logger.info("Not enough messages to summarize significantly.", extra={"msg_type": "memory_operation"})
             return
 
-        messages_to_summarize = self.messages[:-num_to_keep]
+        first_message = self.messages[0]
+        messages_to_summarize = self.messages[1:-num_to_keep]
         messages_kept = self.messages[-num_to_keep:]
         history_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages_to_summarize])
         
@@ -118,7 +120,6 @@ class ChatSummaryMemory(MemoryInterface):
         
         logger.info(f"Calling summarizer LLM to summarize messages.", extra={"msg_type": "memory_operation"})
         summary = self.summarizer_llm.generate(summarizer_prompt)
-
         # Calculate completion tokens
         completion_tokens = calculate_string_tokens(summary) if summary else 0
         
@@ -133,7 +134,7 @@ class ChatSummaryMemory(MemoryInterface):
             # Prepend summary using the standard AI role for compatibility
             summary_content = f"Summary of prior conversation: {summary}"
             summary_message = {"role": INTERNAL_AI_ROLE, "content": summary_content}
-            self.messages = [summary_message] + messages_kept
+            self.messages = [first_message, summary_message] + messages_kept
             # Also add the summarization action to the detailed log
             self.log.append({
                 "type": "summarization", 
