@@ -36,3 +36,4 @@ logs/
 debates/
 tests/
 results/
+config/settings.yaml
