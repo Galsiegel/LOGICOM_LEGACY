@@ -35,5 +35,4 @@ logs/
 *.log
 debates/
 tests/
-
-*.xlsx
+results/
