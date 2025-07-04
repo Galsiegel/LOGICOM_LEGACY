@@ -172,12 +172,14 @@ def _run_single_debate(index: int,
             result_code = 2  # For "Inconclusive", errors, etc.
         
         # Save debate summary to Excel
+        rounds = run_result_data.get('rounds', 0)
         excel_success = save_debate_in_excel(
             topic_id,
             claim_data,
             helper_type,
             chat_id,
-            result_code
+            result_code,
+            rounds
         )
         if excel_success:
             logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})
