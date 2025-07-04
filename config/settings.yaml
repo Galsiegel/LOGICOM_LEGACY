@@ -54,20 +54,12 @@ agent_configurations:
       model_name: gpt35_turbo
       model_config_override: {}
 
-      # Helper Feedback Config 
-      use_helper_feedback: false 
-      helper_model_name: gpt35_turbo
-      helper_model_config_override: {}
-
     debater:
       model_name: gpt35_turbo 
       model_config_override: {}
 
     moderator:
-      model_name: gemini_15_flash_8b 
-      # Paths based on original hardcoded names for PaLM/Gemini prompts
-      prompt_terminator_path: ./prompts/moderator/moderator_terminator_instruction.txt
-      prompt_topic_checker_path: ./prompts/moderator/moderator_topic_instruction.txt
+      model_name: gemini_20_flash
       model_config_override: { temperature: 0.5 }
 
   # --- Default with Fallacy Helper Enabled --- 
@@ -80,7 +72,7 @@ agent_configurations:
       model_config_override:
         temperature: 1.0
 
-      # Helper Feedback Config 
+      # Helper Config 
       helper_model_name: gpt35_turbo
       helper_model_config_override: {} 
 
@@ -90,7 +82,7 @@ agent_configurations:
         temperature: 1.0 
 
     moderator:
-      model_name: gemini_15_flash_8b
+      model_name: gemini_20_flash
       model_config_override: { temperature: 0.5 }
 
   # --- Default with Vanilla Helper Enabled --- 
@@ -104,7 +96,7 @@ agent_configurations:
       model_config_override:
         temperature: 1.0 
 
-      # Helper Feedback Config 
+      # Helper Config 
       helper_model_name: gpt35_turbo 
       helper_model_config_override: {} 
 
@@ -114,7 +106,7 @@ agent_configurations:
         temperature: 1.0 
 
     moderator:
-      model_name: gemini_15_flash_8b
+      model_name: gemini_20_flash
       model_config_override: { temperature: 0.5 } 
 
   # --- Example Configuration using Local Gemma --- 
