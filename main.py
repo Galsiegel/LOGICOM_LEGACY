@@ -13,7 +13,7 @@ from utils.set_api_keys import set_environment_variables_from_file, API_KEYS_PAT
 from config.loader import load_app_config
 from core.orchestrator import DebateOrchestrator
 from core.debate_setup import DebateInstanceSetup
-from utils.utils import create_debate_directory, save_debate_logs, save_debate_in_excel # Why the fuck isnt this used
+from utils.utils import create_debate_directory, save_debate_in_excel
 
 # Use colorama for terminal colors
 from colorama import init
@@ -123,9 +123,12 @@ def _run_single_debate(index: int,
 
         # Create directory structure for logs - do this early before anything can fail
         chat_dir = create_debate_directory(topic_id, chat_id, helper_type)
+        
+        # Setup logging to write directly to the debate directory
+        # MUST be done before any logger calls
+        setup_logging(log_directory=chat_dir)
+        
         logger.info(f"Created debate chat directory: {chat_dir}", extra={"msg_type": "system"})
-
-        # Log start using extracted topic_id
         logger.info(f"Preparing Claim Index: {index}, Topic ID: {topic_id}", extra={"msg_type": "system"})
 
         # Instantiate setup class for this claim
@@ -156,11 +159,6 @@ def _run_single_debate(index: int,
         )
         
         # --- Post-Debate Processing ---
-        # Save all log files to the debate directory
-        if save_debate_logs(chat_dir, remove_originals=True):
-            logger.info(f"Successfully saved logs to {chat_dir}", extra={"msg_type": "system"})
-        else:
-            logger.warning(f"Failed to save logs to {chat_dir}", extra={"msg_type": "system"})
         
         # Convert result to integer for Excel (1=convinced, 0=not convinced, 2=other)
         result_status = run_result_data.get('result', 'Unknown')
@@ -224,12 +222,10 @@ def _run_single_debate(index: int,
 # --- Main Execution Logic --- 
 def main():
     # Print statement to verify the script is running
-    print("Starting application - initializing logging...")
+    print("Starting application...")
     
-    # --- Central Logging Configuration ---
-    setup_logging()
-    logger.info("Application starting...", extra={"msg_type": "system"})
-    # -----------------------------------
+    # Note: Logging will be configured per debate instance to avoid conflicts
+    print("Application starting...")
 
     args = define_arguments()
     
@@ -243,27 +239,27 @@ def main():
             models_path=args.models_path,
             run_config_name=args.helper_type
         )
-        logger.info("Configuration loaded successfully.", extra={"msg_type": "system"})
-        logger.info(f"Loading configuration for run: '{args.helper_type}'...", extra={"msg_type": "system"})
+        print("Configuration loaded successfully.")
+        print(f"Loading configuration for run: '{args.helper_type}'...")
 
         # Load claims data
         claims_file_path = debate_settings['claims_file_path']
-        logger.info(f"Loading claim data from: {claims_file_path}", extra={"msg_type": "system"})
+        print(f"Loading claim data from: {claims_file_path}")
         claims_df = pd.read_csv(claims_file_path)
         num_claims = len(claims_df)
-        logger.debug(f"Loaded {num_claims} claims.", extra={"msg_type": "system"})
+        print(f"Loaded {num_claims} claims.")
 
         # Determine claims to run
         if args.claim_index is not None:
-            logger.info(f"Running only for specified claim index: {args.claim_index}")
+            print(f"Running only for specified claim index: {args.claim_index}")
             claim_indices_to_run = [args.claim_index]
         else:
-            logger.info(f"Running for all {num_claims} claims.", extra={"msg_type": "system"})
+            print(f"Running for all {num_claims} claims.")
             claim_indices_to_run = list(range(num_claims))
 
         # Override max_rounds if provided via command line
         if args.max_rounds is not None:
-            logger.info(f"Overriding max_rounds from {debate_settings['max_rounds']} to {args.max_rounds}", extra={"msg_type": "system"})
+            print(f"Overriding max_rounds from {debate_settings['max_rounds']} to {args.max_rounds}")
             debate_settings['max_rounds'] = args.max_rounds
 
         # Get helper type from the resolved config
@@ -287,8 +283,7 @@ def main():
         # _summarize_results(results_summary)
 
     except Exception as e:
-        logger.critical(f"\nAn unexpected error occurred in main execution: {e}", 
-                       extra={"msg_type": "system"})
+        print(f"\nAn unexpected error occurred in main execution: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':

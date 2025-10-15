@@ -61,13 +61,23 @@ class SystemMessageFilter(logging.Filter):
     def filter(self, record):
         return getattr(record, "msg_type", None) == "system"
 
-def setup_logging():
-    """Initialize logging configuration with proper queue setup"""
+def setup_logging(log_directory: str = "logs"):
+    """Initialize logging configuration with proper queue setup
     
-    # Ensure logs directory exists
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
+    Args:
+        log_directory: Directory where log files should be written. Defaults to 'logs'.
+    """
+    
+    # Ensure log directory exists
+    if not os.path.exists(log_directory):
+        os.makedirs(log_directory)
         
+    # CRITICAL: Remove all existing handlers from the logger to avoid conflicts
+    # This allows each debate instance to have its own set of handlers
+    for handler in logger.handlers[:]:  # Use slice to copy list since we're modifying it
+        handler.close()
+        logger.removeHandler(handler)
+    
     # Load the logging configuration
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'log.json')
     
@@ -75,10 +85,22 @@ def setup_logging():
         with open(config_path, 'r') as f:
             config = json.load(f)
             
+        # Update file paths in handlers to use the specified log directory
+        for handler_name, handler_config in config.get('handlers', {}).items():
+            if 'filename' in handler_config:
+                # Extract just the filename from the original path
+                original_filename = os.path.basename(handler_config['filename'])
+                # Set new path using the specified log directory
+                handler_config['filename'] = os.path.join(log_directory, original_filename)
+            
         # Configure the queue handler to use our queue
         if 'handlers' in config and 'queue_handler' in config['handlers']:
             config['handlers']['queue_handler']['queue'] = log_queue
             
+        # Set incremental to False to prevent adding duplicate handlers
+        # This replaces the configuration instead of adding to it
+        config['incremental'] = False
+        
         logging.config.dictConfig(config)
         
         # Start a QueueListener to handle records from the queue if needed
