@@ -72,6 +72,17 @@ def main():
     # Create results directory for this run
     results_dir = create_results_directory(args.run_name)
     
+    # Create unique debates folder for this run (inside results directory)
+    debates_folder = os.path.join(results_dir, "debates")
+    os.makedirs(debates_folder, exist_ok=True)
+    print(f"Using debates directory: {debates_folder}")
+    
+    # Clear any existing summary file to start fresh for this batch
+    excel_file = "all_debates_summary.xlsx"
+    if os.path.exists(excel_file):
+        os.remove(excel_file)
+        print(f"Cleared existing {excel_file} for fresh start")
+    
     # Get helper types to run
     if args.helper_types:
         helper_types = args.helper_types
@@ -131,7 +142,8 @@ def main():
                 helper_type,
                 claim_index,
                 args.settings_path,
-                args.models_path
+                args.models_path,
+                debates_folder
             )
             future_to_run[future] = (i, helper_type, claim_index)
         
@@ -216,23 +228,8 @@ def main():
     else:
         print(f"✗ Prompts folder not found: {prompts_folder}")
     
-    # Move debates folder to results directory
-    debates_folder = "debates"
-    if os.path.exists(debates_folder):
-        dest_debates = os.path.join(results_dir, "debates")
-        try:
-            shutil.move(debates_folder, dest_debates)
-            print(f"✓ Moved debates folder to: {dest_debates}")
-            # Recreate empty debates folder for next run
-            os.makedirs(debates_folder, exist_ok=True)
-            print(f"✓ Created new empty debates folder for next run")
-        except Exception as e:
-            print(f"✗ Failed to move debates folder: {e}")
-    else:
-        print(f"✗ Debates folder not found: {debates_folder}")
-        # Create debates folder if it doesn't exist
-        os.makedirs(debates_folder, exist_ok=True)
-        print(f"✓ Created debates folder for next run")
+    # Debates are already saved directly in results_dir/debates/ - no need to move!
+    print(f"✓ Debates saved in: {debates_folder}")
     
     print(f"\n📁 Results saved in: {results_dir}")
     
@@ -287,9 +284,17 @@ def create_results_directory(run_name: str) -> str:
 
 def run_single_debate(helper_type: str, claim_index: Optional[int] = None, 
                      settings_path: str = "./config/settings.yaml",
-                     models_path: str = "./config/models.yaml") -> bool:
+                     models_path: str = "./config/models.yaml",
+                     debates_dir: str = "debates") -> bool:
     """
     Run a single debate by calling main.py
+    
+    Args:
+        helper_type: Type of helper configuration to use
+        claim_index: Specific claim to run (None for all claims)
+        settings_path: Path to settings.yaml
+        models_path: Path to models.yaml
+        debates_dir: Directory where debate logs should be saved
     
     Returns True if successful, False if failed
     """
@@ -303,6 +308,9 @@ def run_single_debate(helper_type: str, claim_index: Optional[int] = None,
         
     if models_path != "./config/models.yaml":
         cmd.extend(["--models_path", models_path])
+    
+    # Always pass the debates directory
+    cmd.extend(["--debates_dir", debates_dir])
     
     print(f"Running: {' '.join(cmd)}")
     

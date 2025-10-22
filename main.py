@@ -98,6 +98,8 @@ def define_arguments() -> argparse.Namespace:
                         help="Path to the LLM models configuration file.")
     parser.add_argument("--max_rounds", type=int, default=None,
                         help="Override the maximum number of debate rounds (default is from settings.yaml)")
+    parser.add_argument("--debates_dir", default="debates",
+                        help="Directory where debate logs should be saved (default: debates)")
     args = parser.parse_args()
     return args
 
@@ -107,7 +109,8 @@ def _run_single_debate(index: int,
                          debate_settings: Dict, 
                          agent_config: Dict, 
                          prompt_templates: Dict, 
-                         helper_type: str) -> Dict:
+                         helper_type: str,
+                         debates_base_dir: str = "debates") -> Dict:
     """Sets up and runs a single debate instance, handling errors."""
     topic_id = "N/A"
     run_result = {}
@@ -122,7 +125,7 @@ def _run_single_debate(index: int,
         formatted_prompts, topic_id, claim_text = format_prompts_for_claim(debate_settings, claim_data, prompt_templates)
 
         # Create directory structure for logs - do this early before anything can fail
-        chat_dir = create_debate_directory(topic_id, chat_id, helper_type)
+        chat_dir = create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir)
         
         # Setup logging to write directly to the debate directory
         # MUST be done before any logger calls
@@ -197,6 +200,26 @@ def _run_single_debate(index: int,
         current_topic_id = topic_id if topic_id != "N/A" else f"Index_{index}"
         logger.error(f"!!!!! Error running debate for Topic ID {current_topic_id}: {e} !!!!!", 
                      extra={"msg_type": "system"})
+        
+        # Save error to Excel with result code 2 (error/other)
+        try:
+            # Generate a chat_id if we don't have one yet (error before chat_id generation)
+            error_chat_id = chat_id if 'chat_id' in locals() else str(uuid.uuid4())
+            excel_success = save_debate_in_excel(
+                current_topic_id,
+                claim_data,
+                helper_type,
+                error_chat_id,
+                result=2,  # Error/Other
+                rounds=0
+            )
+            if excel_success:
+                logger.info(f"Successfully saved error to Excel with result code 2", extra={"msg_type": "system"})
+            else:
+                logger.warning(f"Failed to save error to Excel", extra={"msg_type": "system"})
+        except Exception as excel_error:
+            logger.error(f"Failed to save error to Excel: {excel_error}", extra={"msg_type": "system"})
+        
         run_result = {
             "topic_id": current_topic_id,
             "claim_index": index,
@@ -275,7 +298,8 @@ def main():
                 debate_settings=debate_settings,
                 agent_config=agent_config,
                 prompt_templates=prompt_templates,
-                helper_type=helper_type
+                helper_type=helper_type,
+                debates_base_dir=args.debates_dir
             )
             # results_summary.append(run_result)
 

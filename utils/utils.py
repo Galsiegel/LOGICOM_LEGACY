@@ -7,7 +7,7 @@ import openpyxl
 from filelock import FileLock
 from utils.log_main import logger
 
-def create_debate_directory(topic_id, chat_id, helper_type):
+def create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir="debates"):
     """
     Creates directory structure for debate logs with given topic_id, chat_id, and helper_type.
     
@@ -15,12 +15,13 @@ def create_debate_directory(topic_id, chat_id, helper_type):
         topic_id: Identifier for the debate topic
         chat_id: Unique identifier for this specific chat instance
         helper_type: Type of helper used (no_helper, vanilla, fallacy)
+        debates_base_dir: Base directory for debates (default: "debates")
     
     Returns:
         str: Path to the created directory
     """
     # Define base debates directory
-    debates_dir = "debates"
+    debates_dir = debates_base_dir
     
     # Create general debates folder if it doesn't exist
     if not os.path.exists(debates_dir):
