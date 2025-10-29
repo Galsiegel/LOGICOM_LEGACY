@@ -46,7 +46,7 @@ def create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir="de
 
 # save_debate_logs function removed - logs are now written directly to the correct location
 
-def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rounds):
+def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rounds, finish_reason=""):
     """
     Save debate results to a central Excel file. Creates the file if it doesn't exist,
     otherwise appends to the existing file.
@@ -56,8 +56,9 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
         claim_data: Dictionary with claim information including the claim text
         helper_type: Type of helper used (no_helper, vanilla_helper, fallacy_helper)
         chat_id: Unique identifier for this specific chat instance
-        result: Integer result status (1=convinced, 0=not convinced, 2=other)
+        result: Integer result status (1=convinced, 0=not convinced, 2=inconclusive, -1=error)
         rounds: Number of rounds the debate lasted
+        finish_reason: Reason why the debate ended (e.g., "Max rounds reached", "TERMINATE")
         
     Returns:
         bool: True if successful, False otherwise
@@ -80,6 +81,7 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
                 'helper_type': helper_type,
                 'result': result,
                 'rounds': rounds,
+                'finish_reason': finish_reason,
                 'chat_id': chat_id
             }
             

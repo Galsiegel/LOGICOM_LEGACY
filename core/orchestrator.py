@@ -82,10 +82,14 @@ class DebateOrchestrator:
                 finish_reason = "Debater convinced"
                 break
 
-            keep_talking, final_result_status, finish_reason = self._run_moderation_checks(
+            keep_talking, finish_reason = self._run_moderation_checks(
                 persuader_memory=self.persuader.memory, #TODO: memory shouldnt be accessed from orchastrator
                 debater_memory=self.debater.memory
             )
+            
+            # Set result status based on status tag if debate should end
+            if not keep_talking:
+                    final_result_status = "Inconclusive"
 
         # Handle max rounds reached
         if round_number >= self.max_rounds:
@@ -160,29 +164,41 @@ class DebateOrchestrator:
 
 
 
-    def _run_moderation_checks(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface) -> Tuple[bool, str, str]:
-        """Run all moderation checks and return updated debate state."""
+    def _run_moderation_checks(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface) -> Tuple[bool, str]:
+        """Run all moderation checks and return updated debate state.
+        
+        Returns:
+            Tuple of (should_continue, status_tag)
+            status_tag is "TERMINATE", "OFF-TOPIC", or "" (empty if checks pass)
+        """
             
         # Get recent history for both checks (limit to last few messages)
         recent_history = self._get_recent_history(debater_memory, count=6)  # Last few messages sufficient for both checks
         moderator_logs = []
 
         # Run termination check
-        if not self._run_termination_check(recent_history, moderator_logs):
-            return False, "Inconclusive (Terminated)", "Early termination by moderator"
+        should_continue, status_tag = self._run_termination_check(recent_history, moderator_logs)
+        if not should_continue:
+            return False, status_tag
 
         # Run topic check with same recent history
-        if not self._run_topic_check(recent_history, moderator_logs):
-            return False, "Inconclusive (Off-Topic)", "Off-topic detected by moderator"
+        is_on_topic, status_tag = self._run_topic_check(recent_history, moderator_logs)
+        if not is_on_topic:
+            return False, status_tag
 
         # append results to memories
         self._append_moderation_results_to_memories(persuader_memory, debater_memory, moderator_logs)
             
-        return True, "", ""
+        return True, ""
 
 
-    def _run_termination_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
-        """Run the termination check moderation and handle the result."""
+    def _run_termination_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
+        """Run the termination check moderation and handle the result.
+        
+        Returns:
+            Tuple of (should_continue, status_tag)
+            status_tag is either "TERMINATE" or "KEEP-TALKING"
+        """
        # logger.debug(f"Moderator checking termination...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         termination_result = self.moderator_terminator.call(history)
@@ -193,19 +209,24 @@ class DebateOrchestrator:
         raw_text = termination_result.strip().upper()
         if 'TERMINATE' in raw_text:
             logger.debug("Parser found TERMINATE signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return False
+            return False, "TERMINATE"
         
         elif 'KEEP-TALKING' in raw_text:
             logger.debug("Parser found KEEP-TALKING signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "KEEP-TALKING"
                 
         else: #TODO: Decide if this should be a warning or an error
             logger.error(f"Termination moderator returned unexpected response '{termination_result}'. Defaulting to KEEP-TALKING." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "KEEP-TALKING"
 
 
-    def _run_topic_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
-        """Run the topic check moderation."""
+    def _run_topic_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
+        """Run the topic check moderation.
+        
+        Returns:
+            Tuple of (is_on_topic, status_tag)
+            status_tag is either "ON-TOPIC" or "OFF-TOPIC"
+        """
        # logger.debug(f"Moderator checking topic...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         topic_result = self.moderator_topic.call(history)
@@ -216,12 +237,12 @@ class DebateOrchestrator:
         raw_text = topic_result.strip().upper()
         
         if 'ON-TOPIC' in raw_text:
-            return True
+            return True, "ON-TOPIC"
         elif 'OFF-TOPIC' in raw_text:
-            return False
+            return False, "OFF-TOPIC"
         else: #TODO: Decide if this should be a warning or an error
             logger.warning(f"Topic check response format unclear: {topic_result}. Defaulting to on-topic." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "ON-TOPIC"
 
     def _run_conviction_check(self, debater_response: str,debater_memory: MemoryInterface) -> Tuple[bool]:
         """Run the conviction check moderation and return whether debate should end with conviction."""

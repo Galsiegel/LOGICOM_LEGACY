@@ -163,14 +163,19 @@ def _run_single_debate(index: int,
         
         # --- Post-Debate Processing ---
         
-        # Convert result to integer for Excel (1=convinced, 0=not convinced, 2=other)
+        # Convert result to integer for Excel
+        # 1 = convinced, 0 = not convinced, 2 = inconclusive, -1 = error
         result_status = run_result_data.get('result', 'Unknown')
+        finish_reason = run_result_data.get('finish_reason', '')
+        
         if result_status == "Convinced":
             result_code = 1
         elif result_status == "Not convinced":
             result_code = 0
+        elif result_status.startswith("Inconclusive"):
+            result_code = 2  # Inconclusive (TERMINATE, OFF-TOPIC, etc.)
         else:
-            result_code = 2  # For "Inconclusive", errors, etc.
+            result_code = 2  # Default to inconclusive for unknown statuses
         
         # Save debate summary to Excel
         rounds = run_result_data.get('rounds', 0)
@@ -180,7 +185,8 @@ def _run_single_debate(index: int,
             helper_type,
             chat_id,
             result_code,
-            rounds
+            rounds,
+            finish_reason
         )
         if excel_success:
             logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})
@@ -201,20 +207,22 @@ def _run_single_debate(index: int,
         logger.error(f"!!!!! Error running debate for Topic ID {current_topic_id}: {e} !!!!!", 
                      extra={"msg_type": "system"})
         
-        # Save error to Excel with result code 2 (error/other)
+        # Save error to Excel with result code -1 (error)
         try:
             # Generate a chat_id if we don't have one yet (error before chat_id generation)
             error_chat_id = chat_id if 'chat_id' in locals() else str(uuid.uuid4())
+            error_finish_reason = f"ERROR: {str(e)}"
             excel_success = save_debate_in_excel(
                 current_topic_id,
                 claim_data,
                 helper_type,
                 error_chat_id,
-                result=2,  # Error/Other
-                rounds=0
+                result=-1,  # Error
+                rounds=0,
+                finish_reason=error_finish_reason
             )
             if excel_success:
-                logger.info(f"Successfully saved error to Excel with result code 2", extra={"msg_type": "system"})
+                logger.info(f"Successfully saved error to Excel with result code -1", extra={"msg_type": "system"})
             else:
                 logger.warning(f"Failed to save error to Excel", extra={"msg_type": "system"})
         except Exception as excel_error:
