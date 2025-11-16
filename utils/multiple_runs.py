@@ -158,18 +158,27 @@ def main():
             
             try:
                 success = future.result() # Get the return value from run_single_debate()
+                completed = successful_runs + failed_runs + 1
+                progress_pct = (completed / total_runs) * 100
+                
                 if success:
                     successful_runs += 1
-                    print(f"✓ [{successful_runs + failed_runs}/{total_runs}] Completed: {helper_type}" + 
-                          (f" claim {claim_index}" if claim_index is not None else " all claims"))
+                    status_icon = "✓"
+                    status_text = "Completed"
                 else:
                     failed_runs += 1
-                    print(f"✗ [{successful_runs + failed_runs}/{total_runs}] Failed: {helper_type}" + 
-                          (f" claim {claim_index}" if claim_index is not None else " all claims"))
+                    status_icon = "✗"
+                    status_text = "Failed"
+                
+                claim_desc = f" claim {claim_index}" if claim_index is not None else " all claims"
+                print(f"{status_icon} [{completed}/{total_runs}] ({progress_pct:.1f}%) {status_text}: {helper_type}{claim_desc}")
+                
             except Exception as e:
                 failed_runs += 1
-                print(f"✗ [{successful_runs + failed_runs}/{total_runs}] Exception: {helper_type}" + 
-                      (f" claim {claim_index}" if claim_index is not None else " all claims") + f": {e}")
+                completed = successful_runs + failed_runs
+                progress_pct = (completed / total_runs) * 100
+                claim_desc = f" claim {claim_index}" if claim_index is not None else " all claims"
+                print(f"✗ [{completed}/{total_runs}] ({progress_pct:.1f}%) Exception: {helper_type}{claim_desc}: {e}")
     
     # Summary
     elapsed_time = time.time() - start_time

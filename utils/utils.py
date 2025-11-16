@@ -46,18 +46,22 @@ def create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir="de
 
 # save_debate_logs function removed - logs are now written directly to the correct location
 
-def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rounds):
+def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rounds, finish_reason="", 
+                         conviction_rates=None, feedback_tags=None):
     """
-    Save debate results to a central Excel file. Creates the file if it doesn't exist,
-    otherwise appends to the existing file.
+    Save debate results to a central Excel file.
+    Creates the file if it doesn't exist, otherwise appends to it.
     
     Args:
         topic_id: Identifier for the debate topic
         claim_data: Dictionary with claim information including the claim text
         helper_type: Type of helper used (no_helper, vanilla_helper, fallacy_helper)
         chat_id: Unique identifier for this specific chat instance
-        result: Integer result status (1=convinced, 0=not convinced, 2=other)
+        result: Integer result status (1=convinced, 0=not convinced, 2=inconclusive, -1=error)
         rounds: Number of rounds the debate lasted
+        finish_reason: Reason why the debate ended (e.g., "Max rounds reached", "TERMINATE")
+        conviction_rates: List of conviction rates per round (optional)
+        feedback_tags: List of feedback tags per round (optional)
         
     Returns:
         bool: True if successful, False otherwise
@@ -73,33 +77,47 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
             # Get the claim text from the claim data
             claim = claim_data.get('claim', 'Unknown claim')
             
-            # Prepare the new row data with rounds after result and before chat_id
+            # Store full vectors as JSON strings
+            import json
+            conviction_rates = conviction_rates or []
+            feedback_tags = feedback_tags or []
+            conviction_rates_json = json.dumps(conviction_rates)
+            feedback_tags_json = json.dumps(feedback_tags)
+            
+            # Prepare the new row data for Summary sheet
             new_row = {
                 'topic_id': topic_id,
                 'claim': claim,
                 'helper_type': helper_type,
                 'result': result,
                 'rounds': rounds,
+                'finish_reason': finish_reason,
+                'conviction_rates_vector': conviction_rates_json,
+                'feedback_tags_vector': feedback_tags_json,
                 'chat_id': chat_id
             }
             
             # Check if the file already exists
             if os.path.exists(excel_file):
-                # Load existing file
+                # Load existing file - try to read Summary sheet
                 try:
-                    df = pd.read_excel(excel_file)
+                    df_summary = pd.read_excel(excel_file, sheet_name='Summary')
                     # Append new row
-                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    df_summary = pd.concat([df_summary, pd.DataFrame([new_row])], ignore_index=True)
                 except Exception as e:
-                    logger.error(f"Error reading existing Excel file: {e}", extra={"msg_type": "system"})
-                    # If there's an error with the file, create a new one
-                    df = pd.DataFrame([new_row])
+                    logger.debug(f"Could not read Summary sheet, creating new: {e}", extra={"msg_type": "system"})
+                    # If Summary sheet doesn't exist, create it
+                    df_summary = pd.DataFrame([new_row])
             else:
                 # Create new dataframe with headers
-                df = pd.DataFrame([new_row])
+                df_summary = pd.DataFrame([new_row])
             
             # Save dataframe to Excel
-            df.to_excel(excel_file, index=False)
+            with pd.ExcelWriter(excel_file, engine='openpyxl', mode='a' if os.path.exists(excel_file) else 'w') as writer:
+                # Remove existing sheet if it exists
+                if os.path.exists(excel_file) and 'Summary' in writer.book.sheetnames:
+                    del writer.book['Summary']
+                df_summary.to_excel(writer, sheet_name='Summary', index=False)
                 
             logger.info(f"Successfully updated debate summary in {excel_file}", 
                        extra={"msg_type": "system"})

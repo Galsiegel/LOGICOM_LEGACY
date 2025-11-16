@@ -106,30 +106,31 @@ class PersuaderAgent(BaseAgent):
         
         # Prepare default metadata and final response (in case helper is not used or fails)
         final_response_to_send = response_content
+        feedback_tag = None
         
         # Process helper feedback if enabled
         if self.use_helper_feedback:
-            # _get_helper_refinement now only returns (refined_response, feedback_tag_str)
-            final_response_to_send = self._get_helper_refinement(response_content)
-            logger.debug(f"Persuader used helper to refine response", 
-                       extra={"msg_type": "helper_operation", "agent_name": self.agent_name})
+            # _get_helper_refinement returns (refined_response, feedback_tag_str)
+            final_response_to_send, feedback_tag = self._get_helper_refinement(response_content)
+            logger.debug(f"Persuader used helper to refine response, feedback tag: {feedback_tag}", 
+                       extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "feedback_tag": feedback_tag})
 
-        # Add final AI message to memory without extra metadata
-        self.memory.add_ai_message(message=final_response_to_send)
-        logger.info("Persuador added own response to memory", 
-                  extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name})
+        # Add final AI message to memory with feedback_tag as metadata
+        self.memory.add_ai_message(message=final_response_to_send, feedback_tag=feedback_tag)
+        logger.debug("Persuador added own response to memory with feedback tag", 
+                  extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name, "feedback_tag": feedback_tag})
         
-        logger.info(f"Persuader response to debater: {final_response_to_send}", 
+        logger.debug(f"Persuader response to debater: {final_response_to_send}", 
                        extra={"msg_type": "main debate", "agent_name": self.agent_name, "sender": self.agent_name, "receiver": "debater"})
         # Return only the final response string
         return final_response_to_send
 
-    def _get_helper_refinement(self, persuader_response: str) -> str: #TODO: Check if more logging needed
+    def _get_helper_refinement(self, persuader_response: str) -> Tuple[str, str]: #TODO: Check if more logging needed
         """
-        Calls the helper LLM, parses the JSON response, and returns the refined response.
+        Calls the helper LLM, parses the JSON response, and returns the refined response and feedback tag.
         
         Returns:
-            The refined response string
+            A tuple of (refined_response, feedback_tag)
         """
         if not self.helper_llm_client or not self._helper_template_content: 
             raise RuntimeError("Helper LLM client or prompt template content not properly initialized.")
@@ -203,11 +204,11 @@ class PersuaderAgent(BaseAgent):
         # Log the final parsed result
         logger.debug(f"Helper parsed JSON - Response: {refined_response}", 
                    extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "operation": "parsed_response", "feedback_tag": feedback_tag_str})
-        logger.debug(f"Helper parsed JSON - Feedback tag: {feedback_tag_str}", 
+        logger.info(f"Feedback tag: {feedback_tag_str}", 
                    extra={"msg_type": "helper_operation", "agent_name": self.agent_name, "operation": "parsed_feedback_tag", "feedback_tag": feedback_tag_str})
         
-        # Return only the refined response and feedback tag
-        return refined_response
+        # Return both the refined response and feedback tag
+        return refined_response, feedback_tag_str
 
     def _format_history_for_helper(self, history_log: List[Any]) -> str:
         """Helper to convert internal log format to a simple text string for helper prompts."""

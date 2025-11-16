@@ -76,16 +76,26 @@ class DebateOrchestrator:
             # Run Debater's turn
             debater_response = self._run_debater_turn(current_persuader_response)
             
-            # Check if debater was convinced after their response
-            if self._run_conviction_check(debater_response=debater_response, debater_memory=self.debater.memory):
+            # Check if debater was convinced after their response and get conviction rate
+            is_convinced, conviction_rate = self._run_conviction_check(debater_response=debater_response, debater_memory=self.debater.memory)
+            
+            # Update the conviction rate for the debater's most recent message - TODO:: decide if save it differently
+            if hasattr(self.debater.memory, 'conviction_rates') and len(self.debater.memory.conviction_rates) > 0:
+                self.debater.memory.conviction_rates[-1] = conviction_rate
+            
+            if is_convinced:
                 final_result_status = "Convinced"
                 finish_reason = "Debater convinced"
                 break
 
-            keep_talking, final_result_status, finish_reason = self._run_moderation_checks(
+            keep_talking, finish_reason = self._run_moderation_checks(
                 persuader_memory=self.persuader.memory, #TODO: memory shouldnt be accessed from orchastrator
                 debater_memory=self.debater.memory
             )
+            
+            # Set result status based on status tag if debate should end
+            if not keep_talking:
+                    final_result_status = "Inconclusive"
 
         # Handle max rounds reached
         if round_number >= self.max_rounds:
@@ -160,29 +170,41 @@ class DebateOrchestrator:
 
 
 
-    def _run_moderation_checks(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface) -> Tuple[bool, str, str]:
-        """Run all moderation checks and return updated debate state."""
+    def _run_moderation_checks(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface) -> Tuple[bool, str]:
+        """Run all moderation checks and return updated debate state.
+        
+        Returns:
+            Tuple of (should_continue, status_tag)
+            status_tag is "TERMINATE", "OFF-TOPIC", or "" (empty if checks pass)
+        """
             
         # Get recent history for both checks (limit to last few messages)
         recent_history = self._get_recent_history(debater_memory, count=6)  # Last few messages sufficient for both checks
         moderator_logs = []
 
         # Run termination check
-        if not self._run_termination_check(recent_history, moderator_logs):
-            return False, "Inconclusive (Terminated)", "Early termination by moderator"
+        should_continue, status_tag = self._run_termination_check(recent_history, moderator_logs)
+        if not should_continue:
+            return False, status_tag
 
         # Run topic check with same recent history
-        if not self._run_topic_check(recent_history, moderator_logs):
-            return False, "Inconclusive (Off-Topic)", "Off-topic detected by moderator"
+        is_on_topic, status_tag = self._run_topic_check(recent_history, moderator_logs)
+        if not is_on_topic:
+            return False, status_tag
 
         # append results to memories
         self._append_moderation_results_to_memories(persuader_memory, debater_memory, moderator_logs)
             
-        return True, "", ""
+        return True, ""
 
 
-    def _run_termination_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
-        """Run the termination check moderation and handle the result."""
+    def _run_termination_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
+        """Run the termination check moderation and handle the result.
+        
+        Returns:
+            Tuple of (should_continue, status_tag)
+            status_tag is either "TERMINATE" or "KEEP-TALKING"
+        """
        # logger.debug(f"Moderator checking termination...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         termination_result = self.moderator_terminator.call(history)
@@ -193,19 +215,24 @@ class DebateOrchestrator:
         raw_text = termination_result.strip().upper()
         if 'TERMINATE' in raw_text:
             logger.debug("Parser found TERMINATE signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return False
+            return False, "TERMINATE"
         
         elif 'KEEP-TALKING' in raw_text:
             logger.debug("Parser found KEEP-TALKING signal." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "KEEP-TALKING"
                 
         else: #TODO: Decide if this should be a warning or an error
             logger.error(f"Termination moderator returned unexpected response '{termination_result}'. Defaulting to KEEP-TALKING." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "KEEP-TALKING"
 
 
-    def _run_topic_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> bool:
-        """Run the topic check moderation."""
+    def _run_topic_check(self, history: List[Dict[str, str]], moderator_logs: List[Dict[str, Any]]) -> Tuple[bool, str]:
+        """Run the topic check moderation.
+        
+        Returns:
+            Tuple of (is_on_topic, status_tag)
+            status_tag is either "ON-TOPIC" or "OFF-TOPIC"
+        """
        # logger.debug(f"Moderator checking topic...", extra={"msg_type": "main debate", "speaker": "moderator"})
         
         topic_result = self.moderator_topic.call(history)
@@ -216,15 +243,20 @@ class DebateOrchestrator:
         raw_text = topic_result.strip().upper()
         
         if 'ON-TOPIC' in raw_text:
-            return True
+            return True, "ON-TOPIC"
         elif 'OFF-TOPIC' in raw_text:
-            return False
+            return False, "OFF-TOPIC"
         else: #TODO: Decide if this should be a warning or an error
             logger.warning(f"Topic check response format unclear: {topic_result}. Defaulting to on-topic." , extra={"msg_type": "main debate", "sender": "moderator"})
-            return True
+            return True, "ON-TOPIC"
 
-    def _run_conviction_check(self, debater_response: str,debater_memory: MemoryInterface) -> Tuple[bool]:
-        """Run the conviction check moderation and return whether debate should end with conviction."""
+    def _run_conviction_check(self, debater_response: str, debater_memory: MemoryInterface) -> Tuple[bool, Optional[int]]:
+        """Run the conviction check moderation and return whether debate should end with conviction.
+        
+        Returns:
+            Tuple of (is_convinced, conviction_rate)
+            conviction_rate is an integer 1-10, or None if not parseable
+        """
         # Get recent history for conviction check - focus on the last few exchanges
         recent_history = self._get_recent_history(debater_memory, count=4)  # Last 2 exchanges
         moderator_logs = []
@@ -237,19 +269,49 @@ class DebateOrchestrator:
         
         raw_text = conviction_result.strip().upper()
         
+        # Log the raw moderator response for debugging
+        logger.debug(f"Conviction moderator raw response: '{conviction_result}'",
+                   extra={"msg_type": "main debate", "sender": "moderator"})
+        
+        # i DONT LIKE THIS IMPLEMENTATION
+        conviction_rate = -1
+        try:
+            import re
+            # Try multiple patterns in order of specificity
+            # Pattern 1: "Rate: 8" or "RATE:8"
+            rate_match = re.search(r'RATE:\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 2: "- 8" or dash followed by number
+                rate_match = re.search(r'-\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 3: Any standalone 1-2 digit number
+                rate_match = re.search(r'\b(\d{1,2})\b', raw_text)
+            
+            if rate_match:
+                conviction_rate = int(rate_match.group(1))
+                # Validate range 1-10
+                if conviction_rate < 1 or conviction_rate > 10:
+                    logger.warning(f"Conviction rate {conviction_rate} out of range 1-10, using -1",
+                                 extra={"msg_type": "main debate", "sender": "moderator"})
+                    conviction_rate = -1
+        except Exception as e:
+            logger.warning(f"Could not parse conviction rate from '{conviction_result}': {e}", 
+                         extra={"msg_type": "main debate", "sender": "moderator"})
+        
         if 'CONVINCED' in raw_text and 'NOT-CONVINCED' not in raw_text:
-            logger.debug("Parser found CONVINCED signal.", extra={"msg_type": "main debate", "sender": "moderator"})
-            # Log the conviction result to memories
-            return True
+            logger.debug(f"Parser found CONVINCED signal with rate {conviction_rate}.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return True, conviction_rate
         
         elif 'NOT-CONVINCED' in raw_text:
-            logger.debug("Parser found NOT-CONVINCED signal.", extra={"msg_type": "main debate", "sender": "moderator"})
-            # Log the conviction result to memories
-            return False
+            logger.debug(f"Parser found NOT-CONVINCED signal with rate {conviction_rate}.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return False, conviction_rate
         
         else:
-            logger.error(f"Conviction moderator returned unexpected response '{conviction_result}'. Defaulting to NOT-CONVINCED.", extra={"msg_type": "main debate", "sender": "moderator"})
-            return False
+            logger.error(f"Conviction moderator returned unexpected response '{conviction_result}'. Defaulting to NOT-CONVINCED.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return False, conviction_rate
     #TODO: make the memory incapsuled in agents
     def _append_moderation_results_to_memories(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface, moderator_logs: List[Dict[str, Any]]):
         """Log the results of moderation checks."""
@@ -265,12 +327,18 @@ class DebateOrchestrator:
         # Calculate token usage
         token_usage = self._calculate_token_usage()
         
-        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage
+        # Get feedback tags from persuader's memory
+        feedback_tags = self.persuader.memory.get_feedback_tags()
+        
+        # Get conviction rates from debater's memory
+        conviction_rates = self.debater.memory.get_conviction_rates()
+        
+        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage, feedback tags, and conviction rates
         logger.info(f"Debate ended with result: {final_result_status} !!!!", 
                    extra={"msg_type": "main debate", "sender": "orchestrator", "topic_id": topic_id, 
                           "chat_id": chat_id, "helper_type": helper_type, "result": final_result_status, 
                           "rounds": round_number, "finish_reason": finish_reason, "claim": claim,
-                          "token_usage": token_usage})
+                          "token_usage": token_usage, "feedback_tags": feedback_tags, "conviction_rates": conviction_rates})
 
         # Return just the essential summary information
         return {
@@ -278,7 +346,9 @@ class DebateOrchestrator:
             "result": final_result_status,
             "rounds": round_number,
             "finish_reason": finish_reason, 
-            "total_tokens_estimate": token_usage
+            "total_tokens_estimate": token_usage,
+            "feedback_tags": feedback_tags,
+            "conviction_rates": conviction_rates
         }
     #TODO, make the agents independent of the orchestrator
     def _calculate_token_usage(self) -> int:
