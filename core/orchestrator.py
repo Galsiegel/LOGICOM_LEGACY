@@ -76,8 +76,14 @@ class DebateOrchestrator:
             # Run Debater's turn
             debater_response = self._run_debater_turn(current_persuader_response)
             
-            # Check if debater was convinced after their response
-            if self._run_conviction_check(debater_response=debater_response, debater_memory=self.debater.memory):
+            # Check if debater was convinced after their response and get conviction rate
+            is_convinced, conviction_rate = self._run_conviction_check(debater_response=debater_response, debater_memory=self.debater.memory)
+            
+            # Update the conviction rate for the debater's most recent message - TODO:: decide if save it differently
+            if hasattr(self.debater.memory, 'conviction_rates') and len(self.debater.memory.conviction_rates) > 0:
+                self.debater.memory.conviction_rates[-1] = conviction_rate
+            
+            if is_convinced:
                 final_result_status = "Convinced"
                 finish_reason = "Debater convinced"
                 break
@@ -244,8 +250,13 @@ class DebateOrchestrator:
             logger.warning(f"Topic check response format unclear: {topic_result}. Defaulting to on-topic." , extra={"msg_type": "main debate", "sender": "moderator"})
             return True, "ON-TOPIC"
 
-    def _run_conviction_check(self, debater_response: str,debater_memory: MemoryInterface) -> Tuple[bool]:
-        """Run the conviction check moderation and return whether debate should end with conviction."""
+    def _run_conviction_check(self, debater_response: str, debater_memory: MemoryInterface) -> Tuple[bool, Optional[int]]:
+        """Run the conviction check moderation and return whether debate should end with conviction.
+        
+        Returns:
+            Tuple of (is_convinced, conviction_rate)
+            conviction_rate is an integer 1-10, or None if not parseable
+        """
         # Get recent history for conviction check - focus on the last few exchanges
         recent_history = self._get_recent_history(debater_memory, count=4)  # Last 2 exchanges
         moderator_logs = []
@@ -258,19 +269,49 @@ class DebateOrchestrator:
         
         raw_text = conviction_result.strip().upper()
         
+        # Log the raw moderator response for debugging
+        logger.debug(f"Conviction moderator raw response: '{conviction_result}'",
+                   extra={"msg_type": "main debate", "sender": "moderator"})
+        
+        # i DONT LIKE THIS IMPLEMENTATION
+        conviction_rate = -1
+        try:
+            import re
+            # Try multiple patterns in order of specificity
+            # Pattern 1: "Rate: 8" or "RATE:8"
+            rate_match = re.search(r'RATE:\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 2: "- 8" or dash followed by number
+                rate_match = re.search(r'-\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 3: Any standalone 1-2 digit number
+                rate_match = re.search(r'\b(\d{1,2})\b', raw_text)
+            
+            if rate_match:
+                conviction_rate = int(rate_match.group(1))
+                # Validate range 1-10
+                if conviction_rate < 1 or conviction_rate > 10:
+                    logger.warning(f"Conviction rate {conviction_rate} out of range 1-10, using -1",
+                                 extra={"msg_type": "main debate", "sender": "moderator"})
+                    conviction_rate = -1
+        except Exception as e:
+            logger.warning(f"Could not parse conviction rate from '{conviction_result}': {e}", 
+                         extra={"msg_type": "main debate", "sender": "moderator"})
+        
         if 'CONVINCED' in raw_text and 'NOT-CONVINCED' not in raw_text:
-            logger.debug("Parser found CONVINCED signal.", extra={"msg_type": "main debate", "sender": "moderator"})
-            # Log the conviction result to memories
-            return True
+            logger.debug(f"Parser found CONVINCED signal with rate {conviction_rate}.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return True, conviction_rate
         
         elif 'NOT-CONVINCED' in raw_text:
-            logger.debug("Parser found NOT-CONVINCED signal.", extra={"msg_type": "main debate", "sender": "moderator"})
-            # Log the conviction result to memories
-            return False
+            logger.debug(f"Parser found NOT-CONVINCED signal with rate {conviction_rate}.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return False, conviction_rate
         
         else:
-            logger.error(f"Conviction moderator returned unexpected response '{conviction_result}'. Defaulting to NOT-CONVINCED.", extra={"msg_type": "main debate", "sender": "moderator"})
-            return False
+            logger.error(f"Conviction moderator returned unexpected response '{conviction_result}'. Defaulting to NOT-CONVINCED.", 
+                       extra={"msg_type": "main debate", "sender": "moderator"})
+            return False, conviction_rate
     #TODO: make the memory incapsuled in agents
     def _append_moderation_results_to_memories(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface, moderator_logs: List[Dict[str, Any]]):
         """Log the results of moderation checks."""
@@ -289,12 +330,15 @@ class DebateOrchestrator:
         # Get feedback tags from persuader's memory
         feedback_tags = self.persuader.memory.get_feedback_tags()
         
-        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage and feedback tags
+        # Get conviction rates from debater's memory
+        conviction_rates = self.debater.memory.get_conviction_rates()
+        
+        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage, feedback tags, and conviction rates
         logger.info(f"Debate ended with result: {final_result_status} !!!!", 
                    extra={"msg_type": "main debate", "sender": "orchestrator", "topic_id": topic_id, 
                           "chat_id": chat_id, "helper_type": helper_type, "result": final_result_status, 
                           "rounds": round_number, "finish_reason": finish_reason, "claim": claim,
-                          "token_usage": token_usage, "feedback_tags": feedback_tags})
+                          "token_usage": token_usage, "feedback_tags": feedback_tags, "conviction_rates": conviction_rates})
 
         # Return just the essential summary information
         return {
@@ -303,7 +347,8 @@ class DebateOrchestrator:
             "rounds": round_number,
             "finish_reason": finish_reason, 
             "total_tokens_estimate": token_usage,
-            "feedback_tags": feedback_tags
+            "feedback_tags": feedback_tags,
+            "conviction_rates": conviction_rates
         }
     #TODO, make the agents independent of the orchestrator
     def _calculate_token_usage(self) -> int:

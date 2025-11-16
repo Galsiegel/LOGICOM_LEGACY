@@ -31,6 +31,9 @@ class ChatSummaryMemory(MemoryInterface):
         
         # Persistent feedback tags storage (survives summarization)
         self.feedback_tags: List[Optional[str]] = []
+        
+        # Persistent conviction rates storage (survives summarization)
+        self.conviction_rates: List[Optional[int]] = []
 
     def add_user_message(self, message: str) -> None:
         """Adds a user message using the internal standard role."""
@@ -51,6 +54,10 @@ class ChatSummaryMemory(MemoryInterface):
         feedback_tag = kwargs.get('feedback_tag')
         self.feedback_tags.append(feedback_tag)
         
+        # Store conviction_rate in persistent field (survives summarization)
+        conviction_rate = kwargs.get('conviction_rate')
+        self.conviction_rates.append(conviction_rate)
+        
         self._check_context_length()
 
     def get_history_as_prompt(self) -> List[Dict[str, str]]:
@@ -69,10 +76,11 @@ class ChatSummaryMemory(MemoryInterface):
         return ""
 
     def reset(self) -> None:
-        """Resets the memory, clearing messages, log, and feedback tags."""
+        """Resets the memory, clearing messages, log, feedback tags, and conviction rates."""
         self.messages = []
         self.log = []
         self.feedback_tags = []
+        self.conviction_rates = []
         self.prompt_tokens_used = 0
         self.completion_tokens_used = 0
         self.total_tokens_used = 0
@@ -88,6 +96,10 @@ class ChatSummaryMemory(MemoryInterface):
     def get_feedback_tags(self) -> List[Optional[str]]:
         """Returns the list of feedback tags collected during the conversation."""
         return self.feedback_tags.copy()
+
+    def get_conviction_rates(self) -> List[Optional[int]]:
+        """Returns the list of conviction rates collected during the conversation."""
+        return self.conviction_rates.copy()
 
     def _check_context_length(self) -> None:
         """Checks token count and triggers summarization if trigger threshold is exceeded."""

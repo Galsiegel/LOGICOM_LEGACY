@@ -177,7 +177,11 @@ def _run_single_debate(index: int,
         else:
             result_code = 2  # Default to inconclusive for unknown statuses
         
-        # Save debate summary to Excel
+        # Extract conviction rates and feedback tags
+        conviction_rates = run_result_data.get('conviction_rates', [])
+        feedback_tags = run_result_data.get('feedback_tags', [])
+        
+        # Save debate summary to Excel (with round details)
         rounds = run_result_data.get('rounds', 0)
         excel_success = save_debate_in_excel(
             topic_id,
@@ -186,7 +190,9 @@ def _run_single_debate(index: int,
             chat_id,
             result_code,
             rounds,
-            finish_reason
+            finish_reason,
+            conviction_rates,
+            feedback_tags
         )
         if excel_success:
             logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})
@@ -219,7 +225,9 @@ def _run_single_debate(index: int,
                 error_chat_id,
                 result=-1,  # Error
                 rounds=0,
-                finish_reason=error_finish_reason
+                finish_reason=error_finish_reason,
+                conviction_rates=[],
+                feedback_tags=[]
             )
             if excel_success:
                 logger.info(f"Successfully saved error to Excel with result code -1", extra={"msg_type": "system"})
