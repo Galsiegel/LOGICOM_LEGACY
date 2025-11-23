@@ -47,7 +47,7 @@ def create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir="de
 # save_debate_logs function removed - logs are now written directly to the correct location
 
 def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rounds, finish_reason="", 
-                         conviction_rates=None, feedback_tags=None):
+                         conviction_rates=None, feedback_tags=None, argument_quality_rates=None):
     """
     Save debate results to a central Excel file.
     Creates the file if it doesn't exist, otherwise appends to it.
@@ -62,6 +62,7 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
         finish_reason: Reason why the debate ended (e.g., "Max rounds reached", "TERMINATE")
         conviction_rates: List of conviction rates per round (optional)
         feedback_tags: List of feedback tags per round (optional)
+        argument_quality_rates: List of argument quality rates per round (optional)
         
     Returns:
         bool: True if successful, False otherwise
@@ -81,8 +82,10 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
             import json
             conviction_rates = conviction_rates or []
             feedback_tags = feedback_tags or []
+            argument_quality_rates = argument_quality_rates or []
             conviction_rates_json = json.dumps(conviction_rates)
             feedback_tags_json = json.dumps(feedback_tags)
+            argument_quality_rates_json = json.dumps(argument_quality_rates)
             
             # Prepare the new row data for Summary sheet
             new_row = {
@@ -94,6 +97,7 @@ def save_debate_in_excel(topic_id, claim_data, helper_type, chat_id, result, rou
                 'finish_reason': finish_reason,
                 'conviction_rates_vector': conviction_rates_json,
                 'feedback_tags_vector': feedback_tags_json,
+                'argument_quality_rates_vector': argument_quality_rates_json,
                 'chat_id': chat_id
             }
             

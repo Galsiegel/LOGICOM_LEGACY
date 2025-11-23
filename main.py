@@ -148,6 +148,7 @@ def _run_single_debate(index: int,
             moderator_terminator=setup.moderator_terminator,
             moderator_topic_checker=setup.moderator_topic_checker,
             moderator_conviction=setup.moderator_conviction,
+            moderator_argument_quality=setup.moderator_argument_quality,
             max_rounds=int(debate_settings['max_rounds']),
             turn_delay_seconds=float(debate_settings['turn_delay_seconds'])
         )
@@ -177,9 +178,10 @@ def _run_single_debate(index: int,
         else:
             result_code = 2  # Default to inconclusive for unknown statuses
         
-        # Extract conviction rates and feedback tags
+        # Extract conviction rates, feedback tags, and argument quality rates
         conviction_rates = run_result_data.get('conviction_rates', [])
         feedback_tags = run_result_data.get('feedback_tags', [])
+        argument_quality_rates = run_result_data.get('argument_quality_rates', [])
         
         # Save debate summary to Excel (with round details)
         rounds = run_result_data.get('rounds', 0)
@@ -192,7 +194,8 @@ def _run_single_debate(index: int,
             rounds,
             finish_reason,
             conviction_rates,
-            feedback_tags
+            feedback_tags,
+            argument_quality_rates
         )
         if excel_success:
             logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})

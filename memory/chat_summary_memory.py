@@ -34,6 +34,9 @@ class ChatSummaryMemory(MemoryInterface):
         
         # Persistent conviction rates storage (survives summarization)
         self.conviction_rates: List[Optional[int]] = []
+        
+        # Persistent argument quality rates storage (survives summarization)
+        self.argument_quality_rates: List[Optional[int]] = []
 
     def add_user_message(self, message: str) -> None:
         """Adds a user message using the internal standard role."""
@@ -58,6 +61,10 @@ class ChatSummaryMemory(MemoryInterface):
         conviction_rate = kwargs.get('conviction_rate')
         self.conviction_rates.append(conviction_rate)
         
+        # Store argument_quality_rate in persistent field (survives summarization)
+        argument_quality_rate = kwargs.get('argument_quality_rate')
+        self.argument_quality_rates.append(argument_quality_rate)
+        
         self._check_context_length()
 
     def get_history_as_prompt(self) -> List[Dict[str, str]]:
@@ -76,11 +83,12 @@ class ChatSummaryMemory(MemoryInterface):
         return ""
 
     def reset(self) -> None:
-        """Resets the memory, clearing messages, log, feedback tags, and conviction rates."""
+        """Resets the memory, clearing messages, log, feedback tags, conviction rates, and argument quality rates."""
         self.messages = []
         self.log = []
         self.feedback_tags = []
         self.conviction_rates = []
+        self.argument_quality_rates = []
         self.prompt_tokens_used = 0
         self.completion_tokens_used = 0
         self.total_tokens_used = 0
@@ -100,6 +108,10 @@ class ChatSummaryMemory(MemoryInterface):
     def get_conviction_rates(self) -> List[Optional[int]]:
         """Returns the list of conviction rates collected during the conversation."""
         return self.conviction_rates.copy()
+
+    def get_argument_quality_rates(self) -> List[Optional[int]]:
+        """Returns the list of argument quality rates collected during the conversation."""
+        return self.argument_quality_rates.copy()
 
     def _check_context_length(self) -> None:
         """Checks token count and triggers summarization if trigger threshold is exceeded."""

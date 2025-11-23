@@ -20,6 +20,7 @@ debate_settings:
     moderator_terminator: ./prompts/moderator/moderator_terminator_instruction.txt
     moderator_topic: ./prompts/moderator/moderator_topic_instruction.txt
     moderator_conviction: ./prompts/moderator/moderator_conviction_instruction.txt
+    moderator_argument_quality: ./prompts/moderator/moderator_argument_quality_instruction.txt
     # Helper prompts
     helper_fallacy_system: ./prompts/helper/fallacy_system.txt
     helper_fallacy_wrapper: ./prompts/helper/fallacy_wrapper.txt

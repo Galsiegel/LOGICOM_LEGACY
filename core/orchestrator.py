@@ -27,6 +27,7 @@ class DebateOrchestrator:
                  moderator_terminator: ModeratorAgent,
                  moderator_topic_checker: ModeratorAgent,
                  moderator_conviction: ModeratorAgent,
+                 moderator_argument_quality: ModeratorAgent,
                  # Settings
                  max_rounds: int,
                  turn_delay_seconds: float):
@@ -35,6 +36,7 @@ class DebateOrchestrator:
         self.moderator_terminator = moderator_terminator
         self.moderator_topic = moderator_topic_checker
         self.moderator_conviction = moderator_conviction
+        self.moderator_argument_quality = moderator_argument_quality
         self.turn_delay_seconds = turn_delay_seconds
         self.max_rounds = max_rounds
 
@@ -88,6 +90,13 @@ class DebateOrchestrator:
                 finish_reason = "Debater convinced"
                 break
 
+            # Check argument quality
+            argument_quality_rate = self._run_argument_quality_check(persuader_memory=self.persuader.memory, debater_memory=self.debater.memory)
+            
+            # Update the argument quality rate for the persuader's most recent message - TODO:: decide if save it differently
+            if hasattr(self.persuader.memory, 'argument_quality_rates') and len(self.persuader.memory.argument_quality_rates) > 0:
+                self.persuader.memory.argument_quality_rates[-1] = argument_quality_rate
+
             keep_talking, finish_reason = self._run_moderation_checks(
                 persuader_memory=self.persuader.memory, #TODO: memory shouldnt be accessed from orchastrator
                 debater_memory=self.debater.memory
@@ -123,6 +132,7 @@ class DebateOrchestrator:
         self.moderator_terminator.reset()
         self.moderator_topic.reset()
         self.moderator_conviction.reset()
+        self.moderator_argument_quality.reset()
         
         # Log initial setup 
         logger.debug(f"Starting Debate, Topic: {topic_id}, Chat ID: {chat_id}", 
@@ -135,6 +145,7 @@ class DebateOrchestrator:
         logger.debug(f"Moderator (Terminator): {self.moderator_terminator.agent_name}", extra={"msg_type": "system"})
         logger.debug(f"Moderator (Topic): {self.moderator_topic.agent_name}", extra={"msg_type": "system"})
         logger.debug(f"Moderator (Conviction): {self.moderator_conviction.agent_name}", extra={"msg_type": "system"})
+        logger.debug(f"Moderator (Argument Quality): {self.moderator_argument_quality.agent_name}", extra={"msg_type": "system"})
         logger.debug(f"Max rounds limit set to: {self.max_rounds}", extra={"msg_type": "system"})
 
         return
@@ -312,6 +323,60 @@ class DebateOrchestrator:
             logger.error(f"Conviction moderator returned unexpected response '{conviction_result}'. Defaulting to NOT-CONVINCED.", 
                        extra={"msg_type": "main debate", "sender": "moderator"})
             return False, conviction_rate
+
+    def _run_argument_quality_check(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface) -> Optional[int]:
+        """Run the argument quality check moderation and return the quality rating.
+        
+        Returns:
+            argument_quality_rate: An integer 1-10 representing argument quality, or None if not parseable
+        """
+        # Get recent history for argument quality check - focus on the last few exchanges
+        recent_history = self._get_recent_history(debater_memory, count=6)  # Last few exchanges
+        moderator_logs = []
+        
+        argument_quality_result = self.moderator_argument_quality.call(recent_history)
+        moderator_logs.append({
+            "moderator_name": self.moderator_argument_quality.agent_name,
+            "raw_response": argument_quality_result
+        })
+        
+        raw_text = argument_quality_result.strip().upper()
+        
+        # Log the raw moderator response for debugging
+        logger.debug(f"Argument quality moderator raw response: '{argument_quality_result}'",
+                   extra={"msg_type": "main debate", "sender": "moderator"})
+        
+        argument_quality_rate = None
+        try:
+            import re
+            # Try multiple patterns in order of specificity
+            # Pattern 1: "Rate: 8" or "RATE:8"
+            rate_match = re.search(r'RATE:\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 2: "- 8" or dash followed by number
+                rate_match = re.search(r'-\s*(\d+)', raw_text)
+            if not rate_match:
+                # Pattern 3: Any standalone 1-2 digit number
+                rate_match = re.search(r'\b(\d{1,2})\b', raw_text)
+            
+            if rate_match:
+                argument_quality_rate = int(rate_match.group(1))
+                # Validate range 1-10
+                if argument_quality_rate < 1 or argument_quality_rate > 10:
+                    logger.warning(f"Argument quality rate {argument_quality_rate} out of range 1-10, using None",
+                                 extra={"msg_type": "main debate", "sender": "moderator"})
+                    argument_quality_rate = None
+                else:
+                    logger.debug(f"Parser found argument quality rate {argument_quality_rate}.",
+                               extra={"msg_type": "main debate", "sender": "moderator"})
+        except Exception as e:
+            logger.warning(f"Could not parse argument quality rate from '{argument_quality_result}': {e}", 
+                         extra={"msg_type": "main debate", "sender": "moderator"})
+        
+        # Append moderation results to memories
+        self._append_moderation_results_to_memories(persuader_memory, debater_memory, moderator_logs)
+        
+        return argument_quality_rate
     #TODO: make the memory incapsuled in agents
     def _append_moderation_results_to_memories(self, persuader_memory: MemoryInterface, debater_memory: MemoryInterface, moderator_logs: List[Dict[str, Any]]):
         """Log the results of moderation checks."""
@@ -333,12 +398,16 @@ class DebateOrchestrator:
         # Get conviction rates from debater's memory
         conviction_rates = self.debater.memory.get_conviction_rates()
         
-        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage, feedback tags, and conviction rates
+        # Get argument quality rates from persuader's memory
+        argument_quality_rates = self.persuader.memory.get_argument_quality_rates()
+        
+        # Log debate end with all metadata needed for HTML/XLSX generation, including token usage, feedback tags, conviction rates, and argument quality rates
         logger.info(f"Debate ended with result: {final_result_status} !!!!", 
                    extra={"msg_type": "main debate", "sender": "orchestrator", "topic_id": topic_id, 
                           "chat_id": chat_id, "helper_type": helper_type, "result": final_result_status, 
                           "rounds": round_number, "finish_reason": finish_reason, "claim": claim,
-                          "token_usage": token_usage, "feedback_tags": feedback_tags, "conviction_rates": conviction_rates})
+                          "token_usage": token_usage, "feedback_tags": feedback_tags, "conviction_rates": conviction_rates,
+                          "argument_quality_rates": argument_quality_rates})
 
         # Return just the essential summary information
         return {
@@ -348,7 +417,8 @@ class DebateOrchestrator:
             "finish_reason": finish_reason, 
             "total_tokens_estimate": token_usage,
             "feedback_tags": feedback_tags,
-            "conviction_rates": conviction_rates
+            "conviction_rates": conviction_rates,
+            "argument_quality_rates": argument_quality_rates
         }
     #TODO, make the agents independent of the orchestrator
     def _calculate_token_usage(self) -> int:
@@ -359,17 +429,18 @@ class DebateOrchestrator:
         term_mod_tokens = self.moderator_terminator.get_total_token_usage()["total_tokens"]
         topic_mod_tokens = self.moderator_topic.get_total_token_usage()["total_tokens"]
         conviction_mod_tokens = self.moderator_conviction.get_total_token_usage()["total_tokens"]
+        arg_quality_mod_tokens = self.moderator_argument_quality.get_total_token_usage()["total_tokens"]
         
         # Helper tokens are tracked separately
         helper_tokens = self.persuader.helper_token_used if self.persuader.use_helper_feedback else 0
         
-        total_tokens = persuader_tokens + debater_tokens + term_mod_tokens + topic_mod_tokens + conviction_mod_tokens + helper_tokens
+        total_tokens = persuader_tokens + debater_tokens + term_mod_tokens + topic_mod_tokens + conviction_mod_tokens + arg_quality_mod_tokens + helper_tokens
         
         # Log the token counts
         logger.info(
             f"Token Estimates: Persuader={persuader_tokens}, "
             f"Debater={debater_tokens}, "
-            f"Moderator={term_mod_tokens + topic_mod_tokens + conviction_mod_tokens}, "
+            f"Moderator={term_mod_tokens + topic_mod_tokens + conviction_mod_tokens + arg_quality_mod_tokens}, "
             f"Helper={helper_tokens}, "
             f"Total={total_tokens}"
         )
