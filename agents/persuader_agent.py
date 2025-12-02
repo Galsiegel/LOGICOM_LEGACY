@@ -79,8 +79,10 @@ class PersuaderAgent(BaseAgent):
         if opponent_message is None:
             initial_prompt = self.initial_prompt
             self.memory.add_ai_message(initial_prompt)
-            logger.info("Persuader sending initial prompt to memory: {initial_prompt}", 
+            logger.info(f"Persuader sending initial prompt to memory: {initial_prompt}", 
                       extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name})
+            logger.info(f"Persuader response: {initial_prompt}", 
+                      extra={"msg_type": "main debate", "sender": "persuador", "receiver": "debater"})
             return initial_prompt
         # --- End Initial Turn Handling ---
 
@@ -120,8 +122,8 @@ class PersuaderAgent(BaseAgent):
         logger.debug("Persuador added own response to memory with feedback tag", 
                   extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name, "feedback_tag": feedback_tag})
         
-        logger.debug(f"Persuader response to debater: {final_response_to_send}", 
-                       extra={"msg_type": "main debate", "agent_name": self.agent_name, "sender": self.agent_name, "receiver": "debater"})
+        logger.info(f"Persuader response: {final_response_to_send}", 
+                       extra={"msg_type": "main debate", "sender": "persuador", "receiver": "debater"})
         # Return only the final response string
         return final_response_to_send
 

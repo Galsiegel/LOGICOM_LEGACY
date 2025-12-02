@@ -19,8 +19,12 @@ class OpenAIClient(LLMInterface):
             raise ValueError("OpenAI API key not provided or found in environment variables.")
         self.model_name = model_name
         self.system_instruction = system_instruction
-        # Initialize the OpenAI client library. 
-        self.client = openai.OpenAI(api_key=self.api_key)
+        # Initialize the OpenAI client library with timeout and retry settings
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            timeout=60.0,  # 60 second timeout
+            max_retries=2  # Retry up to 3 times on failure
+        )
 
     def generate(self, prompt: List[Dict[str, str]], **kwargs) -> str:
         """Generates a response using the OpenAI API.
