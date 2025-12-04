@@ -45,6 +45,24 @@ llm_models:
     default_config:
       temperature: 1
 
+  o4_mini:
+    provider: openai
+    model_name: o4-mini
+    default_config:
+      temperature: 1
+
+  gpt41:
+    provider: openai
+    model_name: gpt-4.1
+    default_config:
+      temperature: 1
+
+  gpt41_nano:
+    provider: openai
+    model_name: gpt-4.1-nano
+    default_config:
+      temperature: 1
+
   gpt5:
     provider: openai
     model_name: gpt-5
@@ -54,6 +72,12 @@ llm_models:
   gpt5_mini:
     provider: openai
     model_name: gpt-5-mini
+    default_config:
+      temperature: 1
+
+  gpt51:
+    provider: openai
+    model_name: gpt-5.1
     default_config:
       temperature: 1
 

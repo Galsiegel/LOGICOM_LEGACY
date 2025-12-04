@@ -81,7 +81,7 @@ class PersuaderAgent(BaseAgent):
             self.memory.add_ai_message(initial_prompt)
             logger.info(f"Persuader sending initial prompt to memory: {initial_prompt}", 
                       extra={"msg_type": "memory_operation", "operation": "write", "agent_name": self.agent_name})
-            logger.info(f"Persuader response: {initial_prompt}", 
+            logger.info(f"Persuader opening message: {initial_prompt}", 
                       extra={"msg_type": "main debate", "sender": "persuador", "receiver": "debater"})
             return initial_prompt
         # --- End Initial Turn Handling ---

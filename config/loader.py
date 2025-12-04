@@ -19,7 +19,7 @@ def load_yaml_config(file_path: str) -> Dict[str, Any]:
                 return {}
             return config
     except FileNotFoundError:
-        logger.error(f"Configuration file not found at {file_path}", extra={"msg_type": "systeme"})
+        logger.error(f"Configuration file not found at {file_path}", extra={"msg_type": "system"})
         raise
     except yaml.YAMLError as e:
         logger.error(f"Error parsing YAML file {file_path}: {e}", extra={"msg_type": "system"})

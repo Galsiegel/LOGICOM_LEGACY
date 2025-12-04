@@ -22,8 +22,8 @@ class OpenAIClient(LLMInterface):
         # Initialize the OpenAI client library with timeout and retry settings
         self.client = openai.OpenAI(
             api_key=self.api_key,
-            timeout=60.0,  # 60 second timeout
-            max_retries=2  # Retry up to 3 times on failure
+            timeout=280.0,
+            max_retries=1
         )
 
     def generate(self, prompt: List[Dict[str, str]], **kwargs) -> str:
