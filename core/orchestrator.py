@@ -533,7 +533,12 @@ class DebateOrchestrator:
         argument_quality_rates = self.persuader.memory.get_argument_quality_rates()
         
         # Run debate quality moderator to get overall debate rating and review
-        debate_quality_rating, debate_quality_review = self._run_debate_quality_check(topic_id, claim, chat_id, helper_type, log_config)
+        # Only run if there is more than one round to the debate
+        if round_number > 1:
+            debate_quality_rating, debate_quality_review = self._run_debate_quality_check(topic_id, claim, chat_id, helper_type, log_config)
+        else:
+            debate_quality_rating = -1
+            debate_quality_review = "Debate quality check skipped: only one round completed"
         
         # Log debate end with all metadata needed for HTML/XLSX generation, including token usage, feedback tags, conviction rates, argument quality rates, and debate quality
         logger.info(f"Debate ended with result: {final_result_status} !!!!", 
