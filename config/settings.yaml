@@ -30,13 +30,6 @@ debate_settings:
     # Memory summarizer prompt
     memory_summarizer: ./prompts/memory/summary_instruction.txt 
 
-  # Output Settings
-  log_base_path: ./logs # Where to save debate logs 
-  log_formats: [json, html, txt, xlsx]
-  save_clean_logs: true # Whether to save clean logs (no metadata)
-  # TODO: Add fallacy analysis output path option
-  fallacy_csv_path: ./logs/fallacies.csv 
-  
   # Debate Flow Control
   max_rounds: 10 
   # Delay between turns
@@ -53,19 +46,19 @@ agent_configurations:
 
     persuader:
       # Reference to LLM config in models.yaml
-      model_name: gpt41_nano
+      model_name: gpt35_turbo
       model_config_override: {}
 
     debater:
-      model_name: gpt41_nano 
+      model_name: gpt35_turbo 
       model_config_override: {}
 
     moderator:
-      model_name: gpt41_mini
+      model_name: gpt35_turbo
       model_config_override: {}
     
     moderator_argument_quality:
-      model_name: o4_mini
+      model_name: gpt35_turbo
       model_config_override: {}
 
   # --- Default with Fallacy Helper Enabled --- 
@@ -74,23 +67,23 @@ agent_configurations:
 
     persuader:
       # Reference to LLM config in models.yaml
-      model_name: gpt41_nano
+      model_name: gpt35_turbo
       model_config_override: {}
 
       # Helper Config 
-      helper_model_name: gpt41_nano
+      helper_model_name: gpt35_turbo
       helper_model_config_override: {} 
 
     debater:
-      model_name: gpt41_nano 
+      model_name: gpt35_turbo 
       model_config_override: {}
 
     moderator:
-      model_name: gpt41_mini
+      model_name: gpt35_turbo
       model_config_override: {}
     
     moderator_argument_quality:
-      model_name: o4_mini
+      model_name: gpt35_turbo
       model_config_override: {}
 
   # --- Default with Vanilla Helper Enabled --- 
@@ -100,23 +93,23 @@ agent_configurations:
 
     persuader:
       # Reference to LLM config in models.yaml
-      model_name: gpt41_nano
+      model_name: gpt35_turbo
       model_config_override: {}
 
       # Helper Config 
-      helper_model_name: gpt41_nano 
+      helper_model_name: gpt35_turbo 
       helper_model_config_override: {} 
 
     debater:
-      model_name: gpt41_nano 
+      model_name: gpt35_turbo 
       model_config_override: {}
 
     moderator:
-      model_name: gpt41_mini
+      model_name: gpt35_turbo
       model_config_override: {}
     
     moderator_argument_quality:
-      model_name: o4_mini
+      model_name: gpt35_turbo
       model_config_override: {}
 
   # --- Example Configuration using Local Gemma --- 

@@ -30,13 +30,6 @@ debate_settings:
     # Memory summarizer prompt
     memory_summarizer: ./prompts/memory/summary_instruction.txt 
 
-  # Output Settings
-  log_base_path: ./logs # Where to save debate logs 
-  log_formats: [json, html, txt, xlsx]
-  save_clean_logs: true # Whether to save clean logs (no metadata)
-  # TODO: Add fallacy analysis output path option
-  fallacy_csv_path: ./logs/fallacies.csv 
-  
   # Debate Flow Control
   max_rounds: 10 
   # Delay between turns

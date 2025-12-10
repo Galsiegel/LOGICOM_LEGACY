@@ -36,20 +36,20 @@
     "handlers": {
         "main_handler": {
             "class": "logging.FileHandler",
-            "filename": "logs/debate_main.log",
+            "filename": "debates/debate_main.log",
             "formatter": "json",
             "filters": ["main_debate_filter"],
             "level": "INFO"
         },
         "debug_handler": {
             "class": "logging.FileHandler",
-            "filename": "logs/debate_debug.log",
+            "filename": "debates/debate_debug.log",
             "formatter": "json",
             "level": "INFO"
         },
         "persuador_helper_handler": {
             "class": "logging.FileHandler",
-            "filename": "logs/persuador_helper_communication.log",
+            "filename": "debates/persuador_helper_communication.log",
             "formatter": "json",
             "filters": ["persuador_helper_filter"],
             "level": "INFO"
