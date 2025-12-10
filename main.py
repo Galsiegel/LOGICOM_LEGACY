@@ -1,300 +1,340 @@
-import time
-import openai
-
-from tqdm import tqdm
-import google.generativeai as palm
-from agents.modertorAgent import ModeratorAgent
-from config.gptconfig import ChatGPTConfig
-
-from utils import *
+import sys
 import argparse
-from agents.persuaderAgent import PersuaderAgent
-from agents.debaterAgent import DebaterAgent
-from colorama import init, Fore, Back, Style
-
+import pandas as pd
 import uuid
+from tqdm import tqdm
+from typing import Dict, Any, Optional, Tuple, Union, List
+import json
+import logging.config
 
-init()
+# --- Direct Imports ---
+from utils.log_main import logger as debate_logger, setup_logging 
+from utils.set_api_keys import set_environment_variables_from_file, API_KEYS_PATH
+from config.loader import load_app_config
+from core.orchestrator import DebateOrchestrator
+from core.debate_setup import DebateInstanceSetup
+from utils.utils import create_debate_directory, save_debate_in_excel
 
+# Use colorama for terminal colors
+from colorama import init
+init(autoreset=True)
 
-def define_arguments():
-    parser = argparse.ArgumentParser(description="Your script description here")
+# Use our custom debate logger instead of creating a new one
+logger = debate_logger
 
-    parser.add_argument("--api_key_openai", required=True, help="API key for openAI")
-    parser.add_argument("--api_key_palm", required=True, help="API key for PaLM")
-    parser.add_argument("--claim_number", default=1, help="The claim number in dataset")
-    parser.add_argument("--persuader_instruction", default='persuader_claim_reason_instruction',
-                        help="Instruction for persuader")
-    parser.add_argument("--debater_instruction", default='debater_claim_reason_instruction',
-                        help="Instruction for debater")
-    parser.add_argument("--helper_prompt_instruction", default='No_Helper', help="Instruction for Helper")
-    parser.add_argument("--data_path", default='./claims/all-claim-not-claim.csv', help="Path to the source data")
-    parser.add_argument("--log_html_path", default='./debates/', help="Path to save the debates")
+# --- Helper Functions ---
 
+def _setup_api_keys():
+    """Sets API keys from the API_keys file."""
+    set_environment_variables_from_file(API_KEYS_PATH)
+
+# --- Helper to format prompts for a specific claim ---
+def format_prompts_for_claim(debate_settings: Dict[str, Any], 
+                               claim_data: pd.Series, 
+                               loaded_prompts: Dict[str, str]) -> Tuple[Dict[str, str], str, str]:
+    """Formats all loaded prompts using data from the current claim row.
+
+    Raises:
+        KeyError: If required keys are missing in debate_settings (mapping, column names)
+                  or in claim_data (data columns), or if placeholders missing in format string.
+    Returns:
+        Tuple containing (formatted_prompts_dict, topic_id_str, claim_text_str)
+    """
+    logger.debug("Formatting prompts for current claim...", extra={"msg_type": "system"})
+    
+    # 1. Get config values needed for data extraction
+    mapping = debate_settings['column_mapping']
+    # Get column names from the mapping dictionary
+    topic_id_col_name = mapping['TOPIC_ID']
+    claim_col_name = mapping['CLAIM']
+    topic_col_name = mapping['TOPIC']
+    reason_col_name = mapping['REASON']
+
+    # 2. Extract required data using these column names
+    topic_id = str(claim_data[topic_id_col_name])
+    claim_text = str(claim_data[claim_col_name])
+    topic_text = str(claim_data[topic_col_name])
+    reason_text = str(claim_data[reason_col_name])
+
+    # 3. Build context dictionary with keys matching placeholders
+    str_context = {
+        "CLAIM": claim_text,
+        "TOPIC": topic_text,
+        "REASON": reason_text
+    }
+
+    # Debugging: Log the keys available right before formatting
+    logger.debug(f"Context keys available for formatting: {list(str_context.keys())}", extra={"msg_type": "system"})
+
+    # 4. Format prompts by sequential replacement
+    formatted_prompts: Dict[str, str] = {}
+    for prompt_name, template_content in loaded_prompts.items():
+        formatted_string = template_content
+        for placeholder_key, value in str_context.items():
+            placeholder = "<" + placeholder_key + ">" # Construct placeholder like <CLAIM>
+            if placeholder in formatted_string:
+                formatted_string = formatted_string.replace(placeholder, value)
+        
+        formatted_prompts[prompt_name] = formatted_string
+        # Log if any replacements happened
+        if formatted_string != template_content:
+             logger.debug(f"Formatted prompt for prompt: {prompt_name}", extra={"msg_type": "system"})
+        else:
+             logger.debug(f"No initial placeholders found for prompt: {prompt_name}", extra={"msg_type": "system"})
+
+    logger.debug("Prompts formatted successfully.", extra={"msg_type": "system"})
+    return formatted_prompts, topic_id, claim_text
+
+# --- Argument Parsing --- 
+def define_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run AI Debates with Reworked Architecture")
+    parser.add_argument("--helper_type", default="Default_No_Helper", 
+                        help="Name of the helper type configuration in settings.yaml to use.")
+    parser.add_argument("--claim_index", type=int, default=None, 
+                        help="Index of the specific claim in the claims_file to run (0-based). Runs all if not specified.")
+    parser.add_argument("--settings_path", default="./config/settings.yaml", 
+                        help="Path to the main settings configuration file.")
+    parser.add_argument("--models_path", default="./config/models.yaml", 
+                        help="Path to the LLM models configuration file.")
+    parser.add_argument("--max_rounds", type=int, default=None,
+                        help="Override the maximum number of debate rounds (default is from settings.yaml)")
+    parser.add_argument("--debates_dir", default="debates",
+                        help="Directory where debate logs should be saved (default: debates)")
     args = parser.parse_args()
-
-    args.moderator_terminator_instruction_palm = 'moderator_terminator_instruction'
-    args.moderator_tag_checker_instruction_palm = 'moderator_TagChecker_instruction'
-    args.moderator_topic_checker_instruction_palm = 'moderator_topic_instruction'
-    args.moderator_terminator_instruction_gpt = 'moderator_terminator_instruction'
-    args.moderator_tag_checker_instruction_gpt = 'moderator_TagChecker_instruction'
-    args.moderator_topic_checker_instruction_gpt = 'moderator_topic_instruction'
-    args.memory_instruction = 'summary_instruction'
-
     return args
 
+# --- New Helper Function to Run a Single Debate --- 
+def _run_single_debate(index: int, 
+                         claim_data: pd.Series, 
+                         debate_settings: Dict, 
+                         agent_config: Dict, 
+                         prompt_templates: Dict, 
+                         helper_type: str,
+                         debates_base_dir: str = "debates") -> Dict:
+    """Sets up and runs a single debate instance, handling errors."""
+    topic_id = "N/A"
+    run_result = {}
+    try:
+        # Generate chat ID early
+        chat_id = str(uuid.uuid4())
+        if not chat_id:
+            logger.error(f"Failed to generate a valid chat_id", extra={"msg_type": "system"})
+            raise ValueError("Failed to generate a valid chat_id")
 
-def run(persuader_agent, debater_agent, moderator_agent_1, moderator_agent_2, moderator_agent_3, moderator_agent_4,
-        moderator_agent_5, args, topic_id, chat_id, claim, gpt4_moderator):
-    print(arg.log_html_path)
-    human = False
-    keep_talking = True
-    round_of_conversation: int = 1
-    if gpt4_moderator:
-        print(Fore.RED + '\n ****** GPT-4_MODERATOR *******' + Style.RESET_ALL)
-    else:
-        print(Fore.GREEN + '\n ****** PaLM_MODERATOR *******' + Style.RESET_ALL)
-    print(Fore.RED + '\n ******************************* TOPIC******************' + Style.RESET_ALL)
-    print(Fore.RED + '******************************* TOPIC******************' + Style.RESET_ALL)
-    print(Fore.RED + '******************************* TOPIC******************' + Style.RESET_ALL)
-    print(persuader_agent.last_response)
+        # Format prompts for this claim (includes extracting topic_id, claim_text)
+        formatted_prompts, topic_id, claim_text = format_prompts_for_claim(debate_settings, claim_data, prompt_templates)
 
-    if human:
-        def handle_submit(user_input, window):
-            debater_response_to_human = debater_agent.call(user_input)
-            window.chat_view.insert(tk.END, "You: {}\n".format(user_input))
-            window.chat_view.insert(tk.END, "\n")
-            window.chat_view.insert(tk.END, "-" * 30 + "\n", "line")
-            window.chat_view.insert(tk.END, "Debater: {}\n".format(debater_response_to_human))
-            window.chat_view.insert(tk.END, "\n")
-            window.chat_view.see(tk.END)
+        # Create directory structure for logs - do this early before anything can fail
+        chat_dir = create_debate_directory(topic_id, chat_id, helper_type, debates_base_dir)
+        
+        # Setup logging to write directly to the debate directory
+        # MUST be done before any logger calls
+        setup_logging(log_directory=chat_dir)
+        
+        logger.info(f"Created debate chat directory: {chat_dir}", extra={"msg_type": "system"})
+        logger.info(f"Preparing Claim Index: {index}, Topic ID: {topic_id}", extra={"msg_type": "system"})
 
-            if not window.is_running:
-                window.window.destroy()
-
-        chat_window = ChatWindow(on_submit=handle_submit)
-        chat_window.insert(tk.END, "You: {}\n".format('test'))
-        chat_window.see(tk.END)
-    else:
-
-        while keep_talking:
-            finish_reason = None
-            result = None
-
-            r"""debater"""
-            print(Fore.MAGENTA + 'round_of_conversation:' + str(round_of_conversation) + Style.RESET_ALL)
-            print(Fore.GREEN + "\033[3m ********Agent2*************.\033[0m " + Style.RESET_ALL)
-            print(Fore.GREEN + "********Debater*************" + Style.RESET_ALL)
-            debater_response = debater_agent.call(persuader_agent.last_response)
-            print(debater_response)
-
-            r"""persuader"""
-            print(Fore.BLUE + "\033[3m ********Agent1*************.\033[0m " + Style.RESET_ALL)
-            print(Fore.BLUE + "********Persuader*************" + Style.RESET_ALL)
-            if persuader_agent.helper_feedback_switch:
-                persuader_response, fallacy, fallacious_argument = persuader_agent.call(debater_agent.last_response)
-            else:
-                persuader_response, fallacy = persuader_agent.call(debater_agent.last_response)
-                fallacious_argument = None
-            print(persuader_response)
-
-            r'''**********Moderator*********'''
-            print(Fore.RED + "******** MODERATOR *************" + Style.RESET_ALL)
-            # This is used for topics that PaLM sends None.
-            if gpt4_moderator:
-                print(Fore.RED + '\n ****** GPT-4_MODERATOR *******' + Style.RESET_ALL)
-                # GPT 4 Moderator
-                moderator_command_4 = moderator_agent_4.call(persuader_agent.memory.chat_memory.log[0].inputs)
-                # GPT 3 MODERATOR
-                # moderator_command_5 = moderator_agent_5.call(persuader_agent.memory.chat_memory.log[0].inputs)
-                print(moderator_command_4.info.value)
-                if moderator_command_4.result:
-                    result = True
-                else:
-                    result = False
-                if moderator_command_4.terminate:
-                    finish_reason = str(moderator_command_4.info.value)
-                    break
-                time.sleep(40)
-            else:
-
-                moderator_command_1 = moderator_agent_1.call(persuader_agent.memory.chat_memory.log[0].inputs)
-
-                if moderator_command_1 == None:
-                    print(
-                        Fore.RED + '\n ****** Replacing PaLM moderator with GPT-4_MODERATOR *******' + Style.RESET_ALL)
-                    moderator_command_4 = moderator_agent_4.call(persuader_agent.memory.chat_memory.log[0].inputs)
-                    # GPT 3 MODERATOR
-                    #  moderator_command_5 = moderator_agent_5.call(persuader_agent.memory.chat_memory.log[0].inputs)
-                    print(moderator_command_4.info.value)
-                    if moderator_command_4.result:
-                        result = True
-                    else:
-                        result = False
-                    if moderator_command_4.terminate:
-                        finish_reason = str(moderator_command_4.info.value)
-                        break
-
-                    time.sleep(35)
-                    gpt4_moderator = True
-                    continue
-                moderator_command_2 = moderator_agent_2.call(persuader_agent.memory.chat_memory.log[0].inputs)
-                moderator_command_3 = moderator_agent_3.call(persuader_agent.memory.chat_memory.log[0].inputs)
-
-                print(moderator_command_1.info.value)
-                print(moderator_command_2.info.value)
-                print(moderator_command_3.info.value)
-
-                if moderator_command_1.result and moderator_command_2.result and moderator_command_3.result:
-                    result = True
-                else:
-                    result = False
-
-                if moderator_command_1.terminate and moderator_command_2.terminate and moderator_command_3.terminate:
-                    finish_reason = str(moderator_command_1.info.value)
-                    break
-
-            round_of_conversation += 1
-            if int(round_of_conversation) > 12:
-                print("safety stop")
-                break
-
-            time.sleep(1)
-
-    print(Fore.RED + "******** Conversation Result *************" + Style.RESET_ALL)
-    print(result)
-
-    r"""Number of token used """
-    print("persuader used token: ", int(persuader_agent.model_backbone.token_used)
-          + int(persuader_agent.model_backbone_helper.token_used) +
-          int(persuader_agent.memory.model_backbone.token_used))
-    print("Debater used token: ", int(debater_agent.model_backbone.token_used)
-          +
-          int(debater_agent.memory.model_backbone.token_used)
-          )
-    print("Number of token used for this conversation: ",
-          int(debater_agent.model_backbone.token_used)
-          + int(persuader_agent.model_backbone.token_used) +
-          int(persuader_agent.model_backbone_helper.token_used) +
-          int(debater_agent.memory.model_backbone.token_used) +
-          int(persuader_agent.memory.model_backbone.token_used)
-          )
-    if gpt4_moderator:
-        print("Number of token each moderator used", moderator_agent_4.model_backbone.token_used)
-    else:
-        print("Number of token each moderator used", moderator_agent_1.model_backbone.token_used)
-
-    r"""Save the log"""
-    save_log(memory_log=persuader_agent.memory,
-             memory_log_path=args.log_html_path,
-             topic_id=topic_id,
-             chat_id=chat_id,
-             result=result,
-             helper=args.helper_prompt_instruction,
-             number_of_rounds=round_of_conversation,
-             claim=claim,
-             finish_reason=finish_reason,
-
-             )
-
-
-def main(arg):
-    data = pd.read_csv(arg.data_path)
-
-    r''' iterate through dataset and starts conversations'''
-
-    for i in tqdm([int(arg.claim_number)]):
-
-        r''' Initialize the Moderator Agent'''
-
-        moderator_agent_1 = ModeratorAgent(model=ModelType.PaLM_TEXT_GENERATION,
-                                           prompt_instruction_path_moderator_terminator='prompts/moderator/%s.txt' % arg.moderator_terminator_instruction_palm,
-                                           prompt_instruction_path_moderator_tag_checker='prompts/moderator/%s.txt' % arg.moderator_tag_checker_instruction_palm,
-                                           prompt_instruction_path_moderator_topic_checker='prompts/moderator/%s.txt' % arg.moderator_topic_checker_instruction_palm,
-                                           variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT)
-                                           )
-        moderator_agent_2 = ModeratorAgent(model=ModelType.PaLM_TEXT_GENERATION,
-                                           prompt_instruction_path_moderator_terminator='prompts/moderator/%s.txt' % arg.moderator_terminator_instruction_palm,
-                                           prompt_instruction_path_moderator_tag_checker='prompts/moderator/%s.txt' % arg.moderator_tag_checker_instruction_palm,
-                                           prompt_instruction_path_moderator_topic_checker='prompts/moderator/%s.txt' % arg.moderator_topic_checker_instruction_palm,
-                                           variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT))
-
-        moderator_agent_3 = ModeratorAgent(model=ModelType.PaLM_TEXT_GENERATION,
-                                           prompt_instruction_path_moderator_terminator='prompts/moderator/%s.txt' % arg.moderator_terminator_instruction_palm,
-                                           prompt_instruction_path_moderator_tag_checker='prompts/moderator/%s.txt' % arg.moderator_tag_checker_instruction_palm,
-                                           prompt_instruction_path_moderator_topic_checker='prompts/moderator/%s.txt' % arg.moderator_topic_checker_instruction_palm,
-                                           variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT))
-        moderator_agent_4 = ModeratorAgent(model=ModelType.GPT_4_0613,
-                                           prompt_instruction_path_moderator_terminator='prompts/moderator/%s.txt' % arg.moderator_terminator_instruction_gpt,
-                                           prompt_instruction_path_moderator_tag_checker='prompts/moderator/%s.txt' % arg.moderator_tag_checker_instruction_gpt,
-                                           prompt_instruction_path_moderator_topic_checker='prompts/moderator/%s.txt' % arg.moderator_topic_checker_instruction_gpt,
-                                           variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT
-                                                                   ))
-        moderator_agent_5 = ModeratorAgent(model=ModelType.GPT_3_5_TURBO_0613,
-                                           prompt_instruction_path_moderator_terminator='prompts/moderator/%s.txt' % arg.moderator_terminator_instruction_gpt,
-                                           prompt_instruction_path_moderator_tag_checker='prompts/moderator/%s.txt' % arg.moderator_tag_checker_instruction_gpt,
-                                           prompt_instruction_path_moderator_topic_checker='prompts/moderator/%s.txt' % arg.moderator_topic_checker_instruction_gpt,
-                                           variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT
-                                                                   ))
-
-        r''' Initialize the Persuader Agent Model Config'''
-        persuader_agent_model_config = ChatGPTConfig(temperature=1.0,
-                                                     presence_penalty=0.0,
-                                                     frequency_penalty=0.0
-                                                     )
-        if arg.helper_prompt_instruction != 'No_Helper':
-            
-            helper_feedback_switch=True
-        else:
-            helper_feedback_switch=False
-
-
-        r''' Initialize the Persuader Agent'''
-        persuader_agent = PersuaderAgent(
-            model=ModelType.GPT_3_5_TURBO_0613,
-            model_helper=ModelType.GPT_3_5_TURBO_0613,
-            model_config=persuader_agent_model_config,
-            helper_prompt_instruction_path='prompts/helper/%s.txt' % arg.helper_prompt_instruction,
-            prompt_instruction_path='prompts/persuader/%s.txt' % arg.persuader_instruction,
-            variables=get_variables(data.loc[i], AgentType.PERSUADER_AGENT),
-            memory_prompt_instruction_path='prompts/summary/%s.txt' % arg.memory_instruction,
-            helper_feedback=helper_feedback_switch)
-
-        if arg.helper_prompt_instruction != 'No_Helper':
-            if not persuader_agent.helper_feedback_switch:
-                print('check the setting1')
-                break
-        else:
-            if persuader_agent.helper_feedback_switch:
-                print('check the setting2')
-                break
-
-        r''' Initialize the Debater Agent Model Config'''
-
-        debater_agent_model_config_gpt = ChatGPTConfig(temperature=1.0,
-                                                       presence_penalty=0.0,
-                                                       frequency_penalty=0.0
-                                                       )
-
-        r''' Initialize the Debater Agent'''
-        debater_agent = DebaterAgent(
-            model=ModelType.GPT_3_5_TURBO_0301,
-            model_config=debater_agent_model_config_gpt,
-            prompt_instruction_path='prompts/debater/%s.txt' % arg.debater_instruction,
-            variables=get_variables(data.loc[i], AgentType.DEBATER_AGENT),
-            memory_prompt_instruction_path='prompts/summary/%s.txt' % arg.memory_instruction,
+        # Instantiate setup class for this claim
+        setup = DebateInstanceSetup(
+            agents_configuration=agent_config, 
+            debate_settings=debate_settings,
+            formatted_prompts=formatted_prompts
         )
-        chat_id = uuid.uuid1()
-        run(persuader_agent, debater_agent, moderator_agent_1, moderator_agent_2, moderator_agent_3, moderator_agent_4,
-            moderator_agent_5, arg, str(data.loc[i]['id'], ),
-            str(chat_id), str(data.loc[i]['claim']), False)
 
-        time.sleep(1)
+        # Instantiate orchestrator 
+        orchestrator = DebateOrchestrator(
+            persuader=setup.persuader, 
+            debater=setup.debater,
+            moderator_terminator=setup.moderator_terminator,
+            moderator_topic_checker=setup.moderator_topic_checker,
+            moderator_conviction=setup.moderator_conviction,
+            moderator_argument_quality=setup.moderator_argument_quality,
+            moderator_debate_quality=setup.moderator_debate_quality,
+            max_rounds=int(debate_settings['max_rounds']),
+            turn_delay_seconds=float(debate_settings['turn_delay_seconds'])
+        )
+        
+        # Run debate
+        # Add debates_base_dir to log_config so orchestrator knows where to find log files
+        log_config_with_debates_dir = {**debate_settings, 'debates_base_dir': debates_base_dir}
+        run_result_data = orchestrator.run_debate(
+            topic_id=topic_id, 
+            claim=claim_text, 
+            log_config=log_config_with_debates_dir,
+            helper_type=helper_type,
+            chat_id=chat_id
+        )
+        
+        # --- Post-Debate Processing ---
+        
+        # Convert result to integer for Excel
+        # 1 = convinced, 0 = not convinced, 2 = inconclusive, -1 = error
+        result_status = run_result_data.get('result', 'Unknown')
+        finish_reason = run_result_data.get('finish_reason', '')
+        
+        if result_status == "Convinced":
+            result_code = 1
+        elif result_status == "Not convinced":
+            result_code = 0
+        elif result_status.startswith("Inconclusive"):
+            result_code = 2  # Inconclusive (TERMINATE, OFF-TOPIC, etc.)
+        else:
+            result_code = 2  # Default to inconclusive for unknown statuses
+        
+        # Extract conviction rates, feedback tags, argument quality rates, and debate quality
+        conviction_rates = run_result_data.get('conviction_rates', [])
+        feedback_tags = run_result_data.get('feedback_tags', [])
+        argument_quality_rates = run_result_data.get('argument_quality_rates', [])
+        debate_quality_rating = run_result_data.get('debate_quality_rating')
+        debate_quality_review = run_result_data.get('debate_quality_review', '')
+        
+        # Save debate summary to Excel (with round details)
+        rounds = run_result_data.get('rounds', 0)
+        excel_success = save_debate_in_excel(
+            topic_id,
+            claim_data,
+            helper_type,
+            chat_id,
+            result_code,
+            rounds,
+            finish_reason,
+            conviction_rates,
+            feedback_tags,
+            argument_quality_rates,
+            debate_quality_rating,
+            debate_quality_review
+        )
+        if excel_success:
+            logger.info(f"Successfully saved debate summary to Excel", extra={"msg_type": "system"})
+        else:
+            logger.warning(f"Failed to save debate summary to Excel", extra={"msg_type": "system"})
+        
+        # Combine orchestrator results with status/IDs
+        run_result = {
+             "topic_id": topic_id,
+             "claim_index": index,
+             "status": 'Success',
+             **run_result_data # Merge results from orchestrator
+        }
 
+    except Exception as e:
+        # Handle setup or runtime errors for this specific debate
+        current_topic_id = topic_id if topic_id != "N/A" else f"Index_{index}"
+        logger.error(f"!!!!! Error running debate for Topic ID {current_topic_id}: {e} !!!!!", 
+                     extra={"msg_type": "system"})
+        
+        # Save error to Excel with result code -1 (error)
+        try:
+            # Generate a chat_id if we don't have one yet (error before chat_id generation)
+            error_chat_id = chat_id if 'chat_id' in locals() else str(uuid.uuid4())
+            error_finish_reason = f"ERROR: {str(e)}"
+            excel_success = save_debate_in_excel(
+                current_topic_id,
+                claim_data,
+                helper_type,
+                error_chat_id,
+                result=-1,  # Error
+                rounds=0,
+                finish_reason=error_finish_reason,
+                conviction_rates=[],
+                feedback_tags=[]
+            )
+            if excel_success:
+                logger.info(f"Successfully saved error to Excel with result code -1", extra={"msg_type": "system"})
+            else:
+                logger.warning(f"Failed to save error to Excel", extra={"msg_type": "system"})
+        except Exception as excel_error:
+            logger.error(f"Failed to save error to Excel: {excel_error}", extra={"msg_type": "system"})
+        
+        run_result = {
+            "topic_id": current_topic_id,
+            "claim_index": index,
+            "status": "ERROR",
+            "error_message": str(e)
+        }
+    return run_result
+
+# # --- New Helper Function to Summarize Results --- 
+# def _summarize_results(results_summary: List[Dict]):
+#     """Logs the summary of successful and failed debate runs."""
+#     logger.info("\n===== Debate Run Summary ====", extra={"msg_type": "system"})
+#     successful_runs = [r for r in results_summary if r.get('status') == 'Success']
+#     failed_runs = [r for r in results_summary if r.get('status') not in ['Success', None]] # Count ERROR and CONFIG_ERROR etc.
+#     logger.info(f"Total Debates Attempted: {len(results_summary)}", extra={"msg_type": "system"})
+#     logger.info(f"Successful: {len(successful_runs)}", extra={"msg_type": "system"})
+#     logger.info(f"Failed: {len(failed_runs)}", extra={"msg_type": "system"})
+#     if failed_runs:
+#          logger.warning("\nFailed Runs:")
+#          for fail in failed_runs:
+#               logger.warning(f"  Index: {fail.get('claim_index','N/A')}, Topic: {fail.get('topic_id','N/A')}, Status: {fail.get('status', 'UNKNOWN')}, Error: {fail.get('error_message','Unknown')}", extra={"msg_type": "system"})
+
+# --- Main Execution Logic --- 
+def main():
+    # Print statement to verify the script is running
+    print("Starting application...")
+    
+    # Note: Logging will be configured per debate instance to avoid conflicts
+    print("Application starting...")
+
+    args = define_arguments()
+    
+    _setup_api_keys()
+
+    try:
+        # Load configuration directly using the loader
+        
+        debate_settings, agent_config, prompt_templates = load_app_config(
+            settings_path=args.settings_path,
+            models_path=args.models_path,
+            run_config_name=args.helper_type
+        )
+        print("Configuration loaded successfully.")
+        print(f"Loading configuration for run: '{args.helper_type}'...")
+
+        # Load claims data
+        claims_file_path = debate_settings['claims_file_path']
+        print(f"Loading claim data from: {claims_file_path}")
+        claims_df = pd.read_csv(claims_file_path)
+        num_claims = len(claims_df)
+        print(f"Loaded {num_claims} claims.")
+
+        # Determine claims to run
+        if args.claim_index is not None:
+            print(f"Running only for specified claim index: {args.claim_index}")
+            claim_indices_to_run = [args.claim_index]
+        else:
+            print(f"Running for all {num_claims} claims.")
+            claim_indices_to_run = list(range(num_claims))
+
+        # Override max_rounds if provided via command line
+        if args.max_rounds is not None:
+            print(f"Overriding max_rounds from {debate_settings['max_rounds']} to {args.max_rounds}")
+            debate_settings['max_rounds'] = args.max_rounds
+
+        # Get helper type from the resolved config
+        helper_type = agent_config['helper_type']
+
+        # --- Run Debates Loop --- 
+        # results_summary = []
+        for index in tqdm(claim_indices_to_run, total=len(claim_indices_to_run), desc="Running Debates"):
+            claim_data = claims_df.iloc[index]
+            run_result = _run_single_debate(
+                index=index,
+                claim_data=claim_data,
+                debate_settings=debate_settings,
+                agent_config=agent_config,
+                prompt_templates=prompt_templates,
+                helper_type=helper_type,
+                debates_base_dir=args.debates_dir
+            )
+            # results_summary.append(run_result)
+
+        # --- Print Summary --- 
+        # _summarize_results(results_summary)
+
+    except Exception as e:
+        print(f"\nAn unexpected error occurred in main execution: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
-
-    arg = define_arguments()
-    palm.configure(api_key=arg.api_key_palm)
-    openai.api_key = arg.api_key_openai
-    main(arg)
+    main() 

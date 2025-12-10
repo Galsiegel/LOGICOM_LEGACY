@@ -1,0 +1,184 @@
+# LLM Configurations Catalogue
+# Defines available LLM providers and specific model setups.
+
+llm_models:
+  # === OpenAI Models ===
+  gpt35_turbo:
+    provider: openai
+    model_name: gpt-3.5-turbo
+    default_config:
+      temperature: 1
+
+  gpt35_turbo_0125:
+    provider: openai
+    model_name: gpt-3.5-turbo-0125
+    default_config:
+      temperature: 1 
+
+  gpt4:
+    provider: openai
+    model_name: gpt-4
+    default_config:
+      temperature: 1
+
+  gpt4_turbo:
+    provider: openai
+    model_name: gpt-4-turbo
+    default_config:
+      temperature: 1
+
+  gpt4_0613:
+    provider: openai
+    model_name: gpt-4-0613
+    default_config:
+      temperature: 1
+
+  gpt4o:
+    provider: openai
+    model_name: gpt-4o
+    default_config:
+      temperature: 1
+
+  gpt4o_mini:
+    provider: openai
+    model_name: gpt-4o-mini
+    default_config:
+      temperature: 1
+
+  o4_mini:
+    provider: openai
+    model_name: o4-mini
+    default_config:
+      temperature: 1
+
+  gpt41:
+    provider: openai
+    model_name: gpt-4.1
+    default_config:
+      temperature: 1
+
+  gpt41_nano:
+    provider: openai
+    model_name: gpt-4.1-nano
+    default_config:
+      temperature: 1
+
+  gpt41_mini:
+    provider: openai
+    model_name: gpt-4.1-mini
+    default_config:
+      temperature: 1
+
+  gpt5:
+    provider: openai
+    model_name: gpt-5
+    default_config:
+      temperature: 1
+
+  gpt5_mini:
+    provider: openai
+    model_name: gpt-5-mini
+    default_config:
+      temperature: 1
+
+  gpt51:
+    provider: openai
+    model_name: gpt-5.1
+    default_config:
+      temperature: 1
+
+  # === Google Gemini Models ===
+  gemini_15_flash_8b:
+    provider: gemini
+    model_name: gemini-1.5-flash-8b
+    default_config:
+      temperature: 0.5
+
+  gemini_15_flash:
+    provider: gemini
+    model_name: gemini-1.5-flash
+    default_config:
+      temperature: 0.5
+
+  gemini_15_pro:
+    provider: gemini
+    model_name: gemini-1.5-pro
+    default_config:
+      temperature: 0.5
+
+  gemini_20_flash: 
+    provider: gemini
+    model_name: gemini-2.0-flash
+    default_config:
+      temperature: 0.5
+
+  gemini_20_flash_lite: 
+    provider: gemini
+    model_name: gemini-2.0-flash-lite
+    default_config:
+      temperature: 0.5
+
+  gemini_20_pro: 
+    provider: gemini
+    model_name: gemini-2.0-pro
+    default_config:
+      temperature: 0.5
+
+  # === Local LLM Templates ===
+  # --- Local Hugging Face Configs --- 
+  # Ensure you have sufficient VRAM/RAM and correct PyTorch/CUDA setup.
+  local_gemma_7b_4bit:
+    provider: local
+    local_type: huggingface 
+    model_name_or_path: google/gemma-7b-it
+    quantization_bits: 4
+    generation_defaults:
+      temperature: 0.7
+      max_new_tokens: 1024
+      do_sample: True
+
+  local_mistral_7b_instruct_4bit:
+    provider: local
+    local_type: huggingface
+    model_name_or_path: mistralai/Mistral-7B-Instruct-v0.2 # Popular 7B instruct model
+    quantization_bits: 4
+    generation_defaults:
+      temperature: 0.7
+      max_new_tokens: 1024
+      do_sample: True
+
+  local_llama31_8b_4bit:
+    provider: local
+    local_type: huggingface
+    model_name_or_path: meta-llama/Meta-Llama-3.1-8B-Instruct
+    quantization_bits: 4
+    generation_defaults:
+      temperature: 0.6
+      max_new_tokens: 1024
+      do_sample: True
+      # Note: Llama3.1 might need specific EOS tokens - check model card.
+      # Example if needed: eos_token_id: [128001, 128009] 
+
+  local_deepseek_coder_6_7b_4bit:
+    provider: local
+    local_type: huggingface
+    model_name_or_path: deepseek-ai/deepseek-coder-6.7b-instruct
+    quantization_bits: 4
+    generation_defaults:
+      temperature: 0.1 
+      max_new_tokens: 1024
+      do_sample: True
+
+  # Example of loading from a local path (if you downloaded it)
+  #  local_gemma_downloaded_4bit:
+  #    provider: local
+  #    local_type: huggingface
+  #    model_name_or_path: /path/to/your/downloaded/gemma-7b-it-weights/ # <-- CHANGE THIS PATH
+  #    quantization_bits: 4
+
+  # Example of disabling quantization (requires much more VRAM!)
+  # local_gemma_7b_no_quant:
+  #   provider: local
+  #   local_type: huggingface
+  #   model_name_or_path: google/gemma-7b-it
+  #   quantization_bits: null # Use YAML null or omit the line

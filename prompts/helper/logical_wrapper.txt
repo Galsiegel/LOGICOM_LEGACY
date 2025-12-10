@@ -1,0 +1,8 @@
+Below is the history of the conversation:
+<HISTORY>
+
+Now please rephrase below response in a way that I can logically win the conversation.
+Do not summaries(There is not answer limit), and Do not remove the important points in my answer. Make sure to be fair.
+
+This is my answer:
+<ASSISTANT_RESPONSE>

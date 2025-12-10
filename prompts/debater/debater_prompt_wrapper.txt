@@ -1,0 +1,4 @@
+The opponent's last message:
+<LAST_OPPONENT_MESSAGE>
+
+Generate your response now.

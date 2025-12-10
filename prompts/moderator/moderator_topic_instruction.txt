@@ -1,4 +1,3 @@
-==== SYSTEM ====
 "There is a debate between assistant and user."
 "Your job is to moderate conversation."
 "You are given the most recent conversations."
@@ -21,4 +20,3 @@ Here is the format of your response:
 
 NEVER SEND BOTH SIGNALS.
 Do NOT SEND "<OFF-TOPIC>" unless you are at least 95 percent sure about your signal.
-==== ASSISTANT ====
